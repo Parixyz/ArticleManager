@@ -47,3 +47,14 @@ small { color:var(--muted); }
 .bar { position:relative; margin:6px 0; background:#1f2937; border-radius:6px; overflow:hidden; padding:2px 6px; }
 .bar i { position:absolute; left:0; top:0; bottom:0; background:#1d4ed8; opacity:.35; }
 .bar span { position:relative; z-index:1; font-size:12px; }
+
+.presenter-toolbar { align-items:center; }
+.presenter-viewer.fullscreen {
+  position: fixed;
+  inset: 10px;
+  z-index: 999;
+  background: #020617;
+  border: 2px solid #1d4ed8;
+}
+.presenter-viewer.fullscreen .presenter-preview-wrap { min-height: calc(100vh - 160px); }
+.presenter-files input[type="file"] { max-width: 100%; }

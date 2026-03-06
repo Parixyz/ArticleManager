@@ -451,6 +451,7 @@ function latexFileTreeNode(file) {
 }
 let presenterScale = 1;
 let presenterSelected = { path: '', articleId: null };
+let presenterFilesCache = [];
 
 function detectTextFromDataUrl(dataUrl) {
   const comma = dataUrl.indexOf(',');
@@ -468,46 +469,124 @@ function detectTextFromDataUrl(dataUrl) {
 }
 
 function applyPresenterZoom() {
-  $('presenterPreviewFrameWrap').style.transform = `scale(${presenterScale})`;
+  const zoomEnabled = $('presenterEnableZoom').checked;
+  const scale = zoomEnabled ? presenterScale : 1;
+  $('presenterPreviewFrameWrap').style.transform = `scale(${scale})`;
   $('presenterPreviewFrameWrap').style.transformOrigin = 'top left';
-  $('zoomResetBtn').textContent = `${Math.round(presenterScale * 100)}%`;
+  $('zoomResetBtn').textContent = `${Math.round(scale * 100)}%`;
 }
 
-async function loadPresenterFiles() {
-  const out = await api(`/api/presenter/files?project=${encodeURIComponent(currentProject())}`);
+function renderPresenterFileTree() {
   const tree = $('presenterFileTree');
   tree.innerHTML = '';
-  const articleByNorm = {};
-  for (const a of (out.articles || [])) articleByNorm[a.title.toLowerCase().replace(/[^a-z0-9]/g, '')] = a.id;
-
-  for (const f of out.files || []) {
+  const query = $('presenterFileSearch').value.trim().toLowerCase();
+  const sorted = [...presenterFilesCache].sort((a, b) => {
+    if (a.file_type !== b.file_type) return a.file_type === 'directory' ? -1 : 1;
+    return a.path.localeCompare(b.path);
+  });
+  for (const f of sorted) {
+    if (query && !f.path.toLowerCase().includes(query)) continue;
     const li = document.createElement('li');
     const btn = document.createElement('button');
     btn.className = 'link-like';
     btn.textContent = `${f.file_type === 'directory' ? '📁' : '📄'} ${f.path}`;
     btn.disabled = f.file_type === 'directory';
-    btn.addEventListener('click', async () => {
-      presenterSelected.path = f.path;
-      const norm = f.path.split('/').pop().replace(/\.[^.]+$/, '').toLowerCase().replace(/[^a-z0-9]/g, '');
-      presenterSelected.articleId = articleByNorm[norm] || null;
-      $('presenterCurrentPath').textContent = f.path;
-      const d = await api(`/api/presenter/file-content?project=${encodeURIComponent(currentProject())}&path=${encodeURIComponent(f.path)}`);
-      const content = d.content || '';
-      const textPreview = detectTextFromDataUrl(content);
-      if (textPreview !== null) {
-        $('presenterTextPreview').classList.remove('hidden');
-        $('presenterTextPreview').textContent = textPreview;
-        $('presenterPdfFrame').classList.add('hidden');
-      } else {
-        $('presenterTextPreview').classList.add('hidden');
-        $('presenterPdfFrame').classList.remove('hidden');
-        $('presenterPdfFrame').src = content;
-      }
-      await loadPresenterNotes();
-    });
+    btn.addEventListener('click', async () => openPresenterFile(f));
     li.appendChild(btn);
     tree.appendChild(li);
   }
+}
+
+async function openPresenterMainTex() {
+  const f = presenterFilesCache.find((x) => x.path === 'main.tex');
+  if (!f) {
+    alert('main.tex is missing');
+    return;
+  }
+  await openPresenterFile(f);
+}
+
+async function openPresenterFile(f) {
+  presenterSelected.path = f.path;
+  $('presenterCurrentPath').textContent = f.path;
+
+  if (f.path === 'main.tex') {
+    const rendered = await api('/api/latex/render', {
+      method: 'POST',
+      body: JSON.stringify({ project: currentProject(), main_tex_path: 'main.tex' }),
+    });
+    $('presenterTextPreview').classList.add('hidden');
+    $('presenterPdfFrame').classList.remove('hidden');
+    $('presenterPdfFrame').src = rendered.pdf_data || '';
+    await loadPresenterNotes();
+    return;
+  }
+
+  const norm = f.path.split('/').pop().replace(/\.[^.]+$/, '').toLowerCase().replace(/[^a-z0-9]/g, '');
+  const articleByNorm = Object.fromEntries((window._presenterArticles || []).map((a) => [a.title.toLowerCase().replace(/[^a-z0-9]/g, ''), a.id]));
+  presenterSelected.articleId = articleByNorm[norm] || null;
+  const d = await api(`/api/presenter/file-content?project=${encodeURIComponent(currentProject())}&path=${encodeURIComponent(f.path)}`);
+  const content = d.content || '';
+  const textPreview = detectTextFromDataUrl(content);
+  if (textPreview !== null) {
+    $('presenterTextPreview').classList.remove('hidden');
+    $('presenterTextPreview').textContent = textPreview;
+    $('presenterPdfFrame').classList.add('hidden');
+  } else {
+    $('presenterTextPreview').classList.add('hidden');
+    $('presenterPdfFrame').classList.remove('hidden');
+    $('presenterPdfFrame').src = content;
+  }
+  await loadPresenterNotes();
+}
+
+async function loadPresenterFiles() {
+  const out = await api(`/api/presenter/files?project=${encodeURIComponent(currentProject())}`);
+  presenterFilesCache = out.files || [];
+  window._presenterArticles = out.articles || [];
+  renderPresenterFileTree();
+  if (!presenterSelected.path) {
+    const main = presenterFilesCache.find((f) => f.path === 'main.tex');
+    if (main) await openPresenterFile(main);
+  }
+}
+
+async function addPresenterFilesToSourceArticles() {
+  const files = Array.from($('presenterBulkFiles').files || []);
+  if (!files.length) throw new Error('select files first');
+  const added = [];
+  for (const file of files) {
+    const file_data = await fileToDataUrl(file);
+    await api('/api/articles/from-file', {
+      method: 'POST',
+      body: JSON.stringify({ project: currentProject(), file_name: file.name, file_data }),
+    });
+    added.push(file.name);
+  }
+  $('presenterBulkFiles').value = '';
+  $('presenterCurrentPath').textContent = `Added ${added.length} files to SourceArticles`;
+  await loadAll();
+}
+
+function togglePresenterFullView() {
+  $('presenterViewerPane').classList.toggle('fullscreen');
+}
+
+function fitPresenterWidth() {
+  presenterScale = 1.4;
+  applyPresenterZoom();
+}
+
+async function renderPresenterMainTex() {
+  const result = await api('/api/latex/render', {
+    method: 'POST',
+    body: JSON.stringify({ project: currentProject(), main_tex_path: 'main.tex' }),
+  });
+  presenterSelected.path = 'main.tex';
+  $('presenterCurrentPath').textContent = 'main.tex (rendered)';
+  $('presenterTextPreview').classList.add('hidden');
+  $('presenterPdfFrame').classList.remove('hidden');
+  $('presenterPdfFrame').src = result.pdf_data || '';
 }
 
 async function savePresenterNote() {
@@ -674,6 +753,26 @@ $('zoomOutBtn').addEventListener('click', () => { presenterScale = Math.max(0.4,
 $('zoomResetBtn').addEventListener('click', () => { presenterScale = 1; applyPresenterZoom(); });
 $('savePresenterNoteBtn').addEventListener('click', () => savePresenterNote().catch((e) => alert(e.message)));
 $('addArticleByFileBtn').addEventListener('click', () => addArticleByFile().catch((e) => alert(e.message)));
+$('presenterBulkAddBtn').addEventListener('click', () => addPresenterFilesToSourceArticles().catch((e) => alert(e.message)));
+$('presenterFileSearch').addEventListener('input', () => renderPresenterFileTree());
+$('presenterFullViewBtn').addEventListener('click', () => togglePresenterFullView());
+$('zoomFitBtn').addEventListener('click', () => fitPresenterWidth());
+$('presenterEnableZoom').addEventListener('change', () => applyPresenterZoom());
+$('presenterRenderMainBtn').addEventListener('click', () => renderPresenterMainTex().catch((e) => alert(e.message)));
+$('presenterOpenMainBtn').addEventListener('click', () => openPresenterMainTex().catch((e) => alert(e.message)));
+
+$('presenterPreviewFrameWrap').addEventListener('wheel', (e) => {
+  if (!$('presenterEnableZoom').checked || !e.ctrlKey) return;
+  e.preventDefault();
+  presenterScale = Math.max(0.4, Math.min(3, presenterScale + (e.deltaY < 0 ? 0.1 : -0.1)));
+  applyPresenterZoom();
+}, { passive: false });
+
+document.addEventListener('keydown', (e) => {
+  if (e.key === 'Escape') $('presenterViewerPane').classList.remove('fullscreen');
+  if (e.key === '+' && $('presenterEnableZoom').checked) { presenterScale = Math.min(3, presenterScale + 0.1); applyPresenterZoom(); }
+  if (e.key === '-' && $('presenterEnableZoom').checked) { presenterScale = Math.max(0.4, presenterScale - 0.1); applyPresenterZoom(); }
+});
 
 applyPresenterZoom();
 refreshProjects().catch(() => {});

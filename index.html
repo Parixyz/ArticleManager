@@ -46,14 +46,24 @@
       <div class="presenter-layout">
         <aside class="presenter-files">
           <h3>Project File Path</h3>
+          <input id="presenterFileSearch" placeholder="filter files..." />
+          <div class="row wrap">
+            <input type="file" id="presenterBulkFiles" multiple accept=".pdf,.txt,.md,.tex,.bib" />
+            <button id="presenterBulkAddBtn">Add Files to SourceArticles</button>
+          </div>
           <ul id="presenterFileTree"></ul>
         </aside>
-        <section class="presenter-viewer">
-          <div class="row wrap">
+        <section class="presenter-viewer" id="presenterViewerPane">
+          <div class="row wrap presenter-toolbar">
             <strong id="presenterCurrentPath">No file selected</strong>
             <button id="zoomOutBtn">-</button>
             <button id="zoomResetBtn">100%</button>
             <button id="zoomInBtn">+</button>
+            <button id="zoomFitBtn">Fit Width</button>
+            <label><input type="checkbox" id="presenterEnableZoom" checked /> zoom enabled</label>
+            <button id="presenterFullViewBtn">Full View</button>
+            <button id="presenterRenderMainBtn">Render main.tex</button>
+            <button id="presenterOpenMainBtn">Open main.tex</button>
           </div>
           <div id="presenterPreviewFrameWrap" class="presenter-preview-wrap">
             <iframe id="presenterPdfFrame" class="latex-pdf" title="Presenter preview"></iframe>

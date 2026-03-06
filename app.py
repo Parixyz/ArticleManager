@@ -106,6 +106,43 @@ def normalize_title(title: str) -> str:
     return re.sub(r"[^a-z0-9]+", "", title.lower())
 
 
+DEFAULT_MAIN_TEX = """\\documentclass{article}
+\\usepackage{amsmath}
+\\usepackage{graphicx}
+\\title{New Article Project}
+\\author{ArticleManager}
+\\date{\\today}
+
+\\begin{document}
+\\maketitle
+
+\\section{Introduction}
+Add your introduction here.
+
+\\bibliographystyle{plain}
+\\bibliography{references}
+\\end{document}
+"""
+
+
+def ensure_default_project_files(conn: sqlite3.Connection, project_id: int) -> None:
+    now = utc_now()
+    defaults = [
+        ("SourceArticles", "directory", ""),
+        (".bib", "directory", ""),
+        ("main.tex", "file", DEFAULT_MAIN_TEX),
+        (".bib/references.bib", "file", ""),
+    ]
+    for path, file_type, content in defaults:
+        conn.execute(
+            """INSERT INTO project_files(project_id,path,file_type,content,linked_capture_id,created_at,updated_at)
+            VALUES(?,?,?,?,?,?,?)
+            ON CONFLICT(project_id,path)
+            DO UPDATE SET file_type=excluded.file_type,updated_at=excluded.updated_at""",
+            (project_id, path, file_type, content if file_type == "file" else "", None, now, now),
+        )
+
+
 def bib_warnings(content: str) -> list[str]:
     warnings: list[str] = []
     if "@" not in content or "{" not in content:
@@ -435,10 +472,11 @@ class AppHandler(SimpleHTTPRequestHandler):
         outline = payload.get("writing_outline", "").strip()
         with db_conn() as conn:
             try:
-                conn.execute(
+                cur = conn.execute(
                     "INSERT INTO projects(name,description,taxonomy,writing_outline,created_at) VALUES (?,?,?,?,?)",
                     (name, description, taxonomy, outline, utc_now()),
                 )
+                ensure_default_project_files(conn, int(cur.lastrowid))
             except sqlite3.IntegrityError:
                 return self._json_response({"error": "project already exists"}, 409)
         self._json_response({"name": name}, 201)
@@ -753,6 +791,7 @@ class AppHandler(SimpleHTTPRequestHandler):
                 pid = get_project_id(conn, project)
             except KeyError:
                 return self._json_response({"error": "project not found"}, 404)
+            ensure_default_project_files(conn, pid)
             rows = conn.execute(
                 """SELECT c.*, d.file_name AS document_name
                 FROM captures c
@@ -903,6 +942,7 @@ class AppHandler(SimpleHTTPRequestHandler):
                 pid = get_project_id(conn, project)
             except KeyError:
                 return self._json_response({"error": "project not found"}, 404)
+            ensure_default_project_files(conn, pid)
             rows = conn.execute(
                 """SELECT id,path,file_type,content,linked_capture_id,created_at,updated_at
                 FROM project_files WHERE project_id=? ORDER BY path""",
@@ -948,6 +988,7 @@ class AppHandler(SimpleHTTPRequestHandler):
                 pid = get_project_id(conn, project)
             except KeyError:
                 return self._json_response({"error": "project not found"}, 404)
+            ensure_default_project_files(conn, pid)
             article_rows = conn.execute("SELECT id,title FROM articles WHERE project_id=? ORDER BY id DESC", (pid,)).fetchall()
             file_rows = conn.execute(
                 "SELECT id,path,file_type,content,linked_capture_id,created_at,updated_at FROM project_files WHERE project_id=? ORDER BY path",
@@ -972,6 +1013,7 @@ class AppHandler(SimpleHTTPRequestHandler):
                 pid = get_project_id(conn, project)
             except KeyError:
                 return self._json_response({"error": "project not found"}, 404)
+            ensure_default_project_files(conn, pid)
             row = conn.execute(
                 "SELECT id,path,file_type,content FROM project_files WHERE project_id=? AND path=?",
                 (pid, rel_path),
@@ -1022,6 +1064,13 @@ class AppHandler(SimpleHTTPRequestHandler):
                 (article_id, file_name, text_hint, "", "", "", utc_now()),
             )
 
+            conn.execute(
+                """INSERT INTO project_files(project_id,path,file_type,content,linked_capture_id,created_at,updated_at)
+                VALUES(?,?,?,?,?,?,?)
+                ON CONFLICT(project_id,path)
+                DO UPDATE SET file_type=excluded.file_type,updated_at=excluded.updated_at""",
+                (pid, "SourceArticles", "directory", "", None, utc_now(), utc_now()),
+            )
             source_path = f"SourceArticles/{file_name}"
             conn.execute(
                 """INSERT INTO project_files(project_id,path,file_type,content,linked_capture_id,created_at,updated_at)
@@ -1046,8 +1095,22 @@ class AppHandler(SimpleHTTPRequestHandler):
     def _render_latex_pdf(self):
         p = self._parse_json()
         latex = p.get("latex", "").strip()
+        project = p.get("project", "").strip()
+        main_tex_path = p.get("main_tex_path", "main.tex").strip().lstrip("/") or "main.tex"
+        if not latex and project:
+            with db_conn() as conn:
+                try:
+                    pid = get_project_id(conn, project)
+                except KeyError:
+                    return self._json_response({"error": "project not found"}, 404)
+                row = conn.execute(
+                    "SELECT content FROM project_files WHERE project_id=? AND path=? AND file_type='file'",
+                    (pid, main_tex_path),
+                ).fetchone()
+                if row:
+                    latex = row["content"].strip()
         if not latex:
-            return self._json_response({"error": "latex required"}, 400)
+            return self._json_response({"error": "latex required (or provide project + main_tex_path)"}, 400)
         pdflatex_cmd = resolve_pdflatex_cmd()
         if pdflatex_cmd is None:
             return self._json_response({
