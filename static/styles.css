@@ -1,0 +1,44 @@
+body {
+  font-family: Arial, sans-serif;
+  margin: 0;
+  background: #f4f7fb;
+}
+.container {
+  max-width: 1000px;
+  margin: 20px auto;
+  padding: 20px;
+  background: white;
+  border-radius: 10px;
+}
+.row {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 12px;
+  flex-wrap: wrap;
+}
+input, select, textarea, button {
+  padding: 8px;
+}
+.tabs {
+  display: flex;
+  gap: 10px;
+  margin: 12px 0;
+}
+.tab {
+  border: 1px solid #bbb;
+  background: #eee;
+  cursor: pointer;
+}
+.tab.active {
+  background: #2b6cb0;
+  color: white;
+}
+.panel {
+  display: none;
+}
+.panel.active {
+  display: block;
+}
+li {
+  margin: 6px 0;
+}

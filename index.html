@@ -1,0 +1,54 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Article Manager - LaTeX Workspace</title>
+  <link rel="stylesheet" href="/static/styles.css" />
+</head>
+<body>
+  <main class="container">
+    <h1>LaTeX Article Manager</h1>
+    <p>Create LaTeX folders, categorize articles in tabs, maintain BibTeX, and keep screenshot captures inside each folder.</p>
+
+    <section class="row">
+      <input id="projectName" placeholder="New LaTeX folder name" />
+      <button id="createProjectBtn">Create Folder</button>
+      <select id="projectSelect"></select>
+    </section>
+
+    <section class="tabs">
+      <button class="tab active" data-target="articlesTab">Articles</button>
+      <button class="tab" data-target="bibTab">BibTeX</button>
+      <button class="tab" data-target="screenshotsTab">Screenshots</button>
+    </section>
+
+    <section id="articlesTab" class="panel active">
+      <h2>Article Categories</h2>
+      <div class="row">
+        <input id="articleTitle" placeholder="Article title" />
+        <input id="articleCategory" placeholder="Category (AI, CV, Math...)" />
+        <input id="articleSource" placeholder="Source URL or note" />
+        <button id="addArticleBtn">Add Article</button>
+      </div>
+      <ul id="articlesList"></ul>
+    </section>
+
+    <section id="bibTab" class="panel">
+      <h2>references.bib</h2>
+      <textarea id="bibContent" rows="14"></textarea>
+      <button id="saveBibBtn">Save .bib</button>
+      <p id="bibSaveMsg"></p>
+    </section>
+
+    <section id="screenshotsTab" class="panel">
+      <h2>Article Screenshot Capture</h2>
+      <p>Pick an image screenshot from an article. It will be stored in this folder under <code>screenshots/</code> (browser storage simulation).</p>
+      <input type="file" id="screenshotFile" accept="image/*" />
+      <button id="uploadShotBtn">Save Screenshot</button>
+      <ul id="screenshotsList"></ul>
+    </section>
+  </main>
+  <script src="/static/app.js"></script>
+</body>
+</html>
