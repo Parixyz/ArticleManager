@@ -27,6 +27,40 @@ function currentProject() {
   return $('projectSelect').value;
 }
 
+function fileToDataUrl(file) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(String(reader.result || ''));
+    reader.onerror = () => reject(new Error('failed to read file'));
+    reader.readAsDataURL(file);
+  });
+}
+
+async function saveDatabaseSnapshot() {
+  const blob = await fetch('/api/database/export').then((r) => {
+    if (!r.ok) throw new Error('failed to export database');
+    return r.blob();
+  });
+  const stamp = new Date().toISOString().replace(/[:.]/g, '-');
+  const link = document.createElement('a');
+  link.href = URL.createObjectURL(blob);
+  link.download = `article_manager_${stamp}.db`;
+  document.body.appendChild(link);
+  link.click();
+  setTimeout(() => {
+    URL.revokeObjectURL(link.href);
+    link.remove();
+  }, 0);
+}
+
+async function loadDatabaseSnapshot() {
+  const file = $('loadDbFile').files?.[0];
+  if (!file) throw new Error('select a db file first');
+  const db_data = await fileToDataUrl(file);
+  await api('/api/database/import', { method: 'POST', body: JSON.stringify({ db_data }) });
+  await refreshProjects();
+}
+
 function syncExportLinks() {
   const p = encodeURIComponent(currentProject() || '');
   $('exportCsvLink').href = `/api/export/articles.csv?project=${p}`;
@@ -295,15 +329,6 @@ function hasBeamerFrameEnvironment(latex) {
   return /\\begin\s*\{frame\}/i.test(latex);
 }
 
-function fileToDataUrl(file) {
-  return new Promise((resolve, reject) => {
-    const reader = new FileReader();
-    reader.onload = () => resolve(reader.result);
-    reader.onerror = reject;
-    reader.readAsDataURL(file);
-  });
-}
-
 async function loadCaptureDocuments() {
   const article_id = Number($('captureArticleSelect').value || 0);
   const capSel = $('captureDocumentSelect');
@@ -568,8 +593,15 @@ async function addPresenterFilesToSourceArticles() {
   await loadAll();
 }
 
-function togglePresenterFullView() {
-  $('presenterViewerPane').classList.toggle('fullscreen');
+async function togglePresenterFullView() {
+  const pane = $('presenterViewerPane');
+  pane.classList.toggle('fullscreen');
+  if (pane.classList.contains('fullscreen') && document.fullscreenElement !== pane) {
+    await pane.requestFullscreen?.().catch(() => {});
+  }
+  if (!pane.classList.contains('fullscreen') && document.fullscreenElement) {
+    await document.exitFullscreen?.().catch(() => {});
+  }
 }
 
 function fitPresenterWidth() {
@@ -728,8 +760,10 @@ async function loadAll() {
   await loadAnalysis();
 }
 
-$('createProjectBtn').addEventListener('click', () => createProject().catch((e) => alert(e.message)));
+$('createProjectBtn').addEventListener('click', () => createProject().then(saveDatabaseSnapshot).catch((e) => alert(e.message)));
 $('refreshBtn').addEventListener('click', () => refreshProjects().catch((e) => alert(e.message)));
+$('saveDbBtn').addEventListener('click', () => saveDatabaseSnapshot().catch((e) => alert(e.message)));
+$('loadDbBtn').addEventListener('click', () => loadDatabaseSnapshot().catch((e) => alert(e.message)));
 $('projectSelect').addEventListener('change', () => loadAll().catch((e) => alert(e.message)));
 $('applyFilterBtn').addEventListener('click', () => loadArticles().catch((e) => alert(e.message)));
 $('autoFillArticleBtn').addEventListener('click', () => autoFillArticle().catch((e) => alert(e.message)));
@@ -768,8 +802,12 @@ $('presenterPreviewFrameWrap').addEventListener('wheel', (e) => {
   applyPresenterZoom();
 }, { passive: false });
 
-document.addEventListener('keydown', (e) => {
-  if (e.key === 'Escape') $('presenterViewerPane').classList.remove('fullscreen');
+document.addEventListener('fullscreenchange', () => {
+  if (!document.fullscreenElement) $('presenterViewerPane').classList.remove('fullscreen');
+});
+
+document.addEventListener('keydown', async (e) => {
+  if (e.key === 'Escape') { $('presenterViewerPane').classList.remove('fullscreen'); if (document.fullscreenElement) await document.exitFullscreen?.().catch(() => {}); }
   if (e.key === '+' && $('presenterEnableZoom').checked) { presenterScale = Math.min(3, presenterScale + 0.1); applyPresenterZoom(); }
   if (e.key === '-' && $('presenterEnableZoom').checked) { presenterScale = Math.max(0.4, presenterScale - 0.1); applyPresenterZoom(); }
 });
