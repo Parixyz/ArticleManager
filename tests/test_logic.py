@@ -1,6 +1,7 @@
 import unittest
+from unittest.mock import patch
 
-from app import bib_warnings, choose_cluster, infer_article_fields, sanitize_project_name, top_keywords
+from app import bib_warnings, choose_cluster, infer_article_fields, resolve_pdflatex_cmd, sanitize_project_name, top_keywords
 
 
 class LogicTests(unittest.TestCase):
@@ -25,6 +26,15 @@ class LogicTests(unittest.TestCase):
         self.assertEqual(out['year'], '2025')
         self.assertEqual(out['venue'], 'ieeexplore.ieee.org')
         self.assertIn('mobility', out['tags'])
+
+    def test_resolve_pdflatex_prefers_available_latex_binary(self):
+        with patch('app.os.environ.get', return_value=''):
+            with patch('app.shutil.which', side_effect=[None, '/usr/bin/lualatex']):
+                self.assertEqual(resolve_pdflatex_cmd(), ['/usr/bin/lualatex'])
+
+    def test_resolve_pdflatex_uses_valid_env_path(self):
+        with patch('app.os.environ.get', return_value='/bin/echo'):
+            self.assertEqual(resolve_pdflatex_cmd(), ['/bin/echo'])
 
 
 if __name__ == '__main__':
