@@ -1,0 +1,58 @@
+\documentclass[aspectratio=169,11pt]{beamer}
+
+\usetheme{Madrid}
+\usecolortheme{seagull}
+\setbeamertemplate{navigation symbols}{}
+\setbeamertemplate{footline}[frame number]
+
+\usepackage[T1]{fontenc}
+\usepackage[utf8]{inputenc}
+\usepackage{lmodern}
+\usepackage{booktabs}
+\usepackage{tabularx}
+\usepackage{array}
+\usepackage{ragged2e}
+\usepackage{multirow}
+\usepackage{tikz}
+\usetikzlibrary{arrows.meta,positioning,fit,shapes.geometric}
+\usepackage{graphicx}
+\usepackage{xcolor}
+\usepackage{pifont}
+\usepackage{amsmath}
+
+\definecolor{navy}{RGB}{19,44,78}
+\definecolor{accent}{RGB}{43,93,162}
+\definecolor{soft}{RGB}{242,246,251}
+
+\setbeamercolor{title}{fg=navy}
+\setbeamercolor{frametitle}{fg=navy,bg=soft}
+\setbeamercolor{structure}{fg=accent}
+\setbeamercolor{block title}{fg=white,bg=accent}
+\setbeamercolor{block body}{bg=soft}
+
+\newcolumntype{Y}{>{\RaggedRight\arraybackslash}X}
+\newcommand{\placeholder}[2]{%
+  \fcolorbox{gray!60}{gray!10}{\parbox[c][#2][c]{#1}{\centering\footnotesize Figure placeholder from uploaded PDF}}
+}
+\newcommand{\mycheck}{\textcolor{accent}{\ding{51}}}
+
+\title[LEO Satellite Edge Computing Survey]{High-Mobility Satellite Edge Computing in LEO Constellations\\\large A Survey of Access, Offloading, Scheduling, and Energy-Aware Optimization}
+\author{Parinaz Bigdelian\\Professor: Dr. Grande}
+\institute{COSC 5P06}
+\date{Draft presentation in Beamer / LaTeX}
+
+\begin{document}
+
+\begin{frame}
+  \titlepage
+\end{frame}
+
+\begin{frame}{Overview}
+  \begin{itemize}
+    \item Access strategies in LEO constellations
+    \item Offloading and scheduling under high mobility
+    \item Energy-aware optimization opportunities
+  \end{itemize}
+\end{frame}
+
+\end{document}
