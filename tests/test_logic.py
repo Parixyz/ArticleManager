@@ -1,6 +1,6 @@
 import unittest
 
-from app import choose_cluster, sanitize_project_name, top_keywords
+from app import bib_warnings, choose_cluster, sanitize_project_name, top_keywords
 
 
 class LogicTests(unittest.TestCase):
@@ -8,12 +8,17 @@ class LogicTests(unittest.TestCase):
         self.assertEqual(sanitize_project_name(' My Project 2026 '), 'My_Project_2026')
 
     def test_keywords(self):
-        keys = top_keywords('Transformer text model model token token token')
+        keys = top_keywords('Transformer token token embedding model')
         self.assertIn('token', keys)
 
-    def test_cluster_vision(self):
-        c = choose_cluster('image segmentation with pixel level detection')
-        self.assertEqual(c, 'vision')
+    def test_cluster_networking(self):
+        c = choose_cluster('traffic steering and handover optimization in wireless mobility')
+        self.assertEqual(c, 'networking')
+
+    def test_bib_warnings(self):
+        w = bib_warnings('@article{x, title={A}}')
+        self.assertIn('missing author', w)
+        self.assertIn('missing year', w)
 
 
 if __name__ == '__main__':

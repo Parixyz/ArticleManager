@@ -1,25 +1,36 @@
-# ArticleManager Pro
+# ArticleManager Presentor
 
-A user-friendly GUI for research workflows with **projects**, **articles**, **BibTeX**, **captures/screenshots**, and **NLP clustering**.
+A user-friendly, survey-first research manager with a **database-backed GUI**, structured article understanding, captures, notes, comparison table maker, and LaTeX render preview.
 
-## What it does
+## Key features
 
-- Create project workspaces (stored in SQLite).
-- Add articles with title/source/notes and auto-inferred NLP cluster + keywords.
-- Store BibTeX entries in a per-project database table.
-- Save highlighted text and screenshot captures from the GUI or a browser extension.
-- Preview captures directly in the app.
-
-## Extension connectivity
-
-Use this API from a browser extension content script:
-
-- `POST /api/extension/capture`
-  - `project` (required)
-  - `capture_type` (`selection` or `screenshot`)
-  - `selected_text` (optional)
-  - `screenshot_data` (optional `data:image/...;base64,...`)
-  - `page_url` (optional)
+- Project workspace with taxonomy + writing outline.
+- Dashboard intelligence: article counts, read/included stats, cluster distribution, missing BibTeX/analysis.
+- Article decision system fields:
+  - role, task, method tags,
+  - evidence strength,
+  - relevance score,
+  - read status,
+  - decision flag.
+- Structured article analysis form:
+  - problem, setting, dataset, algorithm,
+  - baselines, metrics, findings,
+  - limitations, assumptions, future work,
+  - commentary, extracted figures/equations/tables.
+- Capture system with provenance:
+  - source URL, page title, selected text, screenshot, tag, comment, timestamp, linked article.
+- Noter tab for side-by-side note taking with pinning and anchor metadata.
+- Comparison matrix builder:
+  - preview rows,
+  - LaTeX table export,
+  - CSV output.
+- BibTeX workflow:
+  - article link,
+  - validation warnings (missing author/year/title/venue, malformed).
+- Export:
+  - project CSV,
+  - project `.bib`.
+- LaTeX render tab using MathJax (live preview).
 
 ## Run
 
@@ -29,6 +40,20 @@ python app.py
 
 Open: `http://localhost:5000`
 
+## API highlights
+
+- `POST /api/projects`
+- `GET /api/dashboard?project=...`
+- `GET/POST /api/articles`
+- `GET/POST /api/analysis`
+- `GET/POST /api/bib`
+- `GET/POST /api/notes`
+- `GET/POST /api/checklist` + `PUT /api/checklist`
+- `POST /api/extension/capture`
+- `GET /api/comparison?project=...&article_ids=1,2,3`
+- `GET /api/export/articles.csv?project=...`
+- `GET /api/export/project.bib?project=...`
+
 ## Data
 
-- SQLite DB file: `article_manager.db`
+- SQLite database: `article_manager.db`
