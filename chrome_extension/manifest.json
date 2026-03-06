@@ -1,0 +1,13 @@
+{
+  "manifest_version": 3,
+  "name": "ArticleManager Quick Run",
+  "description": "Open ArticleManager and quickly copy the default Windows RunT command.",
+  "version": "1.0.0",
+  "action": {
+    "default_title": "ArticleManager Quick Run",
+    "default_popup": "popup.html"
+  },
+  "permissions": [
+    "clipboardWrite"
+  ]
+}

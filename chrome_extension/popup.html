@@ -1,0 +1,27 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>ArticleManager Quick Run</title>
+    <link rel="stylesheet" href="popup.css" />
+  </head>
+  <body>
+    <main>
+      <h1>ArticleManager</h1>
+      <p>Open the app and use the default RunT command below.</p>
+
+      <label for="runCommand"><strong>RunT:</strong></label>
+      <textarea id="runCommand" rows="5" readonly></textarea>
+
+      <div class="actions">
+        <button id="openThingBtn">Open the Thing</button>
+        <button id="rerunBtn">ReRun</button>
+      </div>
+
+      <p id="status" aria-live="polite"></p>
+    </main>
+
+    <script src="popup.js"></script>
+  </body>
+</html>
