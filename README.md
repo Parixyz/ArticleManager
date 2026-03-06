@@ -61,6 +61,27 @@ $env:PDFLATEX_PATH = "C:\Program Files\MiKTeX\miktex\bin\x64\pdflatex.exe"
 python app.py
 ```
 
+### Google Chrome extension (Open + RunT helper)
+
+This repo now includes a Chrome extension in `chrome_extension/`.
+
+What it does:
+- Displays the default **RunT** command.
+- **Open the Thing** button opens `http://localhost:5000`.
+- **ReRun** button copies the RunT command so you can paste and run it in PowerShell.
+
+Load it in Chrome:
+1. Open `chrome://extensions`.
+2. Turn on **Developer mode**.
+3. Click **Load unpacked** and choose the `chrome_extension` folder.
+
+Default RunT command shown by the extension:
+
+```powershell
+$env:PDFLATEX_PATH = "C:\Program Files\MiKTeX\miktex\bin\x64\pdflatex.exe"
+& C:/Users/parib/AppData/Local/Programs/Python/Python310/python.exe c:/Users/parib/Desktop/ArticleManager/app.py
+```
+
 
 ## API highlights
 
