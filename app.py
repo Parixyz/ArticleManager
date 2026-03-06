@@ -14,7 +14,7 @@ from datetime import datetime, timezone
 from http import HTTPStatus
 from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
-from urllib.parse import parse_qs, urlparse
+from urllib.parse import parse_qs, urlparse, unquote
 
 ROOT = Path(__file__).resolve().parent
 DB_PATH = ROOT / "article_manager.db"
@@ -30,6 +30,20 @@ DECISION_VALUES = {"include", "maybe", "exclude"}
 
 def utc_now() -> str:
     return datetime.now(timezone.utc).isoformat()
+
+
+def decode_data_url(data_url: str) -> tuple[str, bytes]:
+    if not data_url.startswith("data:"):
+        return "application/octet-stream", data_url.encode("utf-8")
+    head, _, body = data_url.partition(",")
+    mime = head[5:].split(";")[0] or "application/octet-stream"
+    if ";base64" in head:
+        return mime, base64.b64decode(body.encode("ascii"))
+    return mime, unquote(body).encode("utf-8")
+
+
+def encode_data_url(mime: str, raw: bytes) -> str:
+    return f"data:{mime};base64,{base64.b64encode(raw).decode('ascii')}"
 
 
 def resolve_pdflatex_cmd() -> list[str] | None:
@@ -354,6 +368,10 @@ class AppHandler(SimpleHTTPRequestHandler):
             return self._get_comparison(parsed.query)
         if p == "/api/project-files":
             return self._get_project_files(parsed.query)
+        if p == "/api/presenter/files":
+            return self._get_presenter_files(parsed.query)
+        if p == "/api/presenter/file-content":
+            return self._get_presenter_file_content(parsed.query)
         if p == "/api/export/articles.csv":
             return self._export_articles_csv(parsed.query)
         if p == "/api/export/project.bib":
@@ -369,6 +387,8 @@ class AppHandler(SimpleHTTPRequestHandler):
             return self._create_project()
         if p == "/api/articles":
             return self._create_article()
+        if p == "/api/articles/from-file":
+            return self._create_article_from_file()
         if p == "/api/analysis":
             return self._upsert_analysis()
         if p == "/api/articles/autofill":
@@ -918,6 +938,110 @@ class AppHandler(SimpleHTTPRequestHandler):
                 (pid, rel_path, file_type, content if file_type == "file" else "", p.get("linked_capture_id"), now, now),
             )
         self._json_response({"status": "saved"}, 201)
+
+    def _get_presenter_files(self, query: str):
+        project = parse_qs(query).get("project", [""])[0]
+        if not project:
+            return self._json_response({"error": "project query is required"}, 400)
+        with db_conn() as conn:
+            try:
+                pid = get_project_id(conn, project)
+            except KeyError:
+                return self._json_response({"error": "project not found"}, 404)
+            article_rows = conn.execute("SELECT id,title FROM articles WHERE project_id=? ORDER BY id DESC", (pid,)).fetchall()
+            file_rows = conn.execute(
+                "SELECT id,path,file_type,content,linked_capture_id,created_at,updated_at FROM project_files WHERE project_id=? ORDER BY path",
+                (pid,),
+            ).fetchall()
+        files = [dict(r) for r in file_rows]
+        paths = {f["path"] for f in files}
+        if "SourceArticles" not in paths:
+            files.insert(0, {"id": None, "path": "SourceArticles", "file_type": "directory", "content": "", "linked_capture_id": None, "created_at": "", "updated_at": ""})
+        if ".bib" not in paths:
+            files.append({"id": None, "path": ".bib", "file_type": "directory", "content": "", "linked_capture_id": None, "created_at": "", "updated_at": ""})
+        self._json_response({"files": files, "articles": [dict(r) for r in article_rows]})
+
+    def _get_presenter_file_content(self, query: str):
+        q = parse_qs(query)
+        project = q.get("project", [""])[0]
+        rel_path = q.get("path", [""])[0].strip().lstrip("/")
+        if not project or not rel_path:
+            return self._json_response({"error": "project and path are required"}, 400)
+        with db_conn() as conn:
+            try:
+                pid = get_project_id(conn, project)
+            except KeyError:
+                return self._json_response({"error": "project not found"}, 404)
+            row = conn.execute(
+                "SELECT id,path,file_type,content FROM project_files WHERE project_id=? AND path=?",
+                (pid, rel_path),
+            ).fetchone()
+        if not row:
+            return self._json_response({"error": "file not found"}, 404)
+        self._json_response(dict(row))
+
+    def _create_article_from_file(self):
+        p = self._parse_json()
+        project = p.get("project", "").strip()
+        file_name = p.get("file_name", "").strip()
+        file_data = p.get("file_data", "").strip()
+        if not project or not file_name or not file_data:
+            return self._json_response({"error": "project, file_name, and file_data required"}, 400)
+
+        mime, raw = decode_data_url(file_data)
+        text_hint = ""
+        lowered = file_name.lower()
+        if mime.startswith("text/") or lowered.endswith((".txt", ".md", ".tex", ".bib")):
+            text_hint = raw.decode("utf-8", errors="replace")[:4000]
+
+        title = Path(file_name).stem.replace("_", " ").replace("-", " ").strip() or file_name
+        with db_conn() as conn:
+            try:
+                pid = get_project_id(conn, project)
+            except KeyError:
+                return self._json_response({"error": "project not found"}, 404)
+
+            auto = infer_article_fields(title, text_hint, "")
+            inferred = choose_cluster(f"{title}\n{text_hint}")
+            keywords = top_keywords(f"{title}\n{text_hint}")
+            norm_title = normalize_title(title)
+            dup = conn.execute("SELECT id,title FROM articles WHERE project_id=? AND normalized_title=?", (pid, norm_title)).fetchall()
+            cur = conn.execute(
+                """INSERT INTO articles(project_id,title,normalized_title,source_url,category,role,research_task,method_tags,evidence_strength,
+                relevance_score,read_status,decision_flag,authors,venue,year,notes,nlp_cluster,keywords,tags,created_at)
+                VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
+                (
+                    pid, title, norm_title, "", auto["category"], "background", "", json.dumps([]), "unclear",
+                    50, "unread", "maybe", "", auto["venue"], auto["year"], text_hint[:800], inferred, json.dumps(keywords), json.dumps(auto["tags"]), utc_now(),
+                ),
+            )
+            article_id = cur.lastrowid
+            conn.execute("INSERT INTO article_analysis(article_id,updated_at) VALUES(?,?)", (article_id, utc_now()))
+            conn.execute(
+                "INSERT INTO article_files(article_id,file_name,full_text,section_segmentation,references_extraction,metadata_extraction,created_at) VALUES(?,?,?,?,?,?,?)",
+                (article_id, file_name, text_hint, "", "", "", utc_now()),
+            )
+
+            source_path = f"SourceArticles/{file_name}"
+            conn.execute(
+                """INSERT INTO project_files(project_id,path,file_type,content,linked_capture_id,created_at,updated_at)
+                VALUES(?,?,?,?,?,?,?)
+                ON CONFLICT(project_id,path)
+                DO UPDATE SET file_type=excluded.file_type,content=excluded.content,updated_at=excluded.updated_at""",
+                (pid, source_path, "file", encode_data_url(mime, raw), None, utc_now(), utc_now()),
+            )
+
+            if lowered.endswith('.bib'):
+                bib_content = raw.decode('utf-8', errors='replace')
+                conn.execute(
+                    """INSERT INTO bib_entries(project_id,article_id,bib_key,bib_content,warnings,created_at)
+                    VALUES(?,?,?,?,?,?)
+                    ON CONFLICT(project_id,bib_key)
+                    DO UPDATE SET article_id=excluded.article_id,bib_content=excluded.bib_content,warnings=excluded.warnings,created_at=excluded.created_at""",
+                    (pid, article_id, normalize_title(title)[:64] or f"entry{article_id}", bib_content, json.dumps(bib_warnings(bib_content)), utc_now()),
+                )
+
+        self._json_response({"id": article_id, "nlp_cluster": inferred, "keywords": keywords, "duplicate_like": [dict(x) for x in dup]}, 201)
 
     def _render_latex_pdf(self):
         p = self._parse_json()

@@ -41,8 +41,40 @@
     </section>
 
     <section id="presenterTab" class="panel active card">
-      <h2>Project Intelligence Dashboard</h2>
+      <h2>Presenter</h2>
+      <p class="hint">Left: all project files with <code>SourceArticles/</code> and <code>.bib</code>. Center: preview + zoom. Right: notes for the selected file/article.</p>
+      <div class="presenter-layout">
+        <aside class="presenter-files">
+          <h3>Project File Path</h3>
+          <ul id="presenterFileTree"></ul>
+        </aside>
+        <section class="presenter-viewer">
+          <div class="row wrap">
+            <strong id="presenterCurrentPath">No file selected</strong>
+            <button id="zoomOutBtn">-</button>
+            <button id="zoomResetBtn">100%</button>
+            <button id="zoomInBtn">+</button>
+          </div>
+          <div id="presenterPreviewFrameWrap" class="presenter-preview-wrap">
+            <iframe id="presenterPdfFrame" class="latex-pdf" title="Presenter preview"></iframe>
+          </div>
+          <pre id="presenterTextPreview" class="presenter-text hidden"></pre>
+        </section>
+        <aside class="presenter-notes">
+          <h3>Notes and Stuff</h3>
+          <select id="presenterNoteType"><option>idea</option><option>critique</option><option>quote</option><option>limitation</option><option>method</option><option>result</option></select>
+          <input id="presenterNoteAnchor" placeholder="anchor/page" />
+          <textarea id="presenterNoteContent" rows="8" placeholder="Add more notes..."></textarea>
+          <button id="savePresenterNoteBtn">Save Note</button>
+          <ul id="presenterNotesList"></ul>
+        </aside>
+      </div>
+    </section>
+
+    <section id="managementTab" class="panel card">
+      <h2>Article Decision System</h2>
       <div id="dashboardGrid" class="grid"></div>
+      <div id="managementPlots" class="plot-grid"></div>
       <h3>Quick search/filter</h3>
       <div class="row wrap">
         <input id="searchQuery" placeholder="Search title/notes/authors/venue" />
@@ -58,10 +90,11 @@
       </div>
       <div id="articleGroups"></div>
       <ul id="articleList"></ul>
-    </section>
-
-    <section id="managementTab" class="panel card">
-      <h2>Article Decision System</h2>
+      <h3>Add article by file</h3>
+      <div class="row wrap">
+        <input type="file" id="managementArticleFile" accept=".pdf,.txt,.md,.tex,.bib" />
+        <button id="addArticleByFileBtn">Add Article by File (Auto Fill)</button>
+      </div>
       <div class="row wrap">
         <input id="aTitle" placeholder="Title" />
         <input id="aSource" placeholder="Source URL" />

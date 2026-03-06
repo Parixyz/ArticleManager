@@ -135,6 +135,7 @@ async function loadArticles() {
       g.appendChild(chip);
     });
   }
+  renderManagementPlots(rows);
   fillArticleSelect('analysisArticleSelect', rows);
   fillArticleSelect('captureArticleSelect', rows);
   loadCaptureDocuments().catch(() => {});
@@ -448,6 +449,140 @@ function latexFileTreeNode(file) {
   li.appendChild(btn);
   return li;
 }
+let presenterScale = 1;
+let presenterSelected = { path: '', articleId: null };
+
+function detectTextFromDataUrl(dataUrl) {
+  const comma = dataUrl.indexOf(',');
+  const head = comma >= 0 ? dataUrl.slice(0, comma) : '';
+  const body = comma >= 0 ? dataUrl.slice(comma + 1) : dataUrl;
+  const isBase64 = head.includes(';base64');
+  const mime = (head.match(/^data:([^;]+)/) || [,''])[1] || 'application/octet-stream';
+  if (!(mime.startsWith('text/') || mime.includes('json') || mime.includes('xml') || mime.includes('bib') || mime.includes('tex'))) return null;
+  try {
+    if (isBase64) return atob(body).slice(0, 12000);
+    return decodeURIComponent(body).slice(0, 12000);
+  } catch {
+    return null;
+  }
+}
+
+function applyPresenterZoom() {
+  $('presenterPreviewFrameWrap').style.transform = `scale(${presenterScale})`;
+  $('presenterPreviewFrameWrap').style.transformOrigin = 'top left';
+  $('zoomResetBtn').textContent = `${Math.round(presenterScale * 100)}%`;
+}
+
+async function loadPresenterFiles() {
+  const out = await api(`/api/presenter/files?project=${encodeURIComponent(currentProject())}`);
+  const tree = $('presenterFileTree');
+  tree.innerHTML = '';
+  const articleByNorm = {};
+  for (const a of (out.articles || [])) articleByNorm[a.title.toLowerCase().replace(/[^a-z0-9]/g, '')] = a.id;
+
+  for (const f of out.files || []) {
+    const li = document.createElement('li');
+    const btn = document.createElement('button');
+    btn.className = 'link-like';
+    btn.textContent = `${f.file_type === 'directory' ? '📁' : '📄'} ${f.path}`;
+    btn.disabled = f.file_type === 'directory';
+    btn.addEventListener('click', async () => {
+      presenterSelected.path = f.path;
+      const norm = f.path.split('/').pop().replace(/\.[^.]+$/, '').toLowerCase().replace(/[^a-z0-9]/g, '');
+      presenterSelected.articleId = articleByNorm[norm] || null;
+      $('presenterCurrentPath').textContent = f.path;
+      const d = await api(`/api/presenter/file-content?project=${encodeURIComponent(currentProject())}&path=${encodeURIComponent(f.path)}`);
+      const content = d.content || '';
+      const textPreview = detectTextFromDataUrl(content);
+      if (textPreview !== null) {
+        $('presenterTextPreview').classList.remove('hidden');
+        $('presenterTextPreview').textContent = textPreview;
+        $('presenterPdfFrame').classList.add('hidden');
+      } else {
+        $('presenterTextPreview').classList.add('hidden');
+        $('presenterPdfFrame').classList.remove('hidden');
+        $('presenterPdfFrame').src = content;
+      }
+      await loadPresenterNotes();
+    });
+    li.appendChild(btn);
+    tree.appendChild(li);
+  }
+}
+
+async function savePresenterNote() {
+  await api('/api/notes', {
+    method: 'POST',
+    body: JSON.stringify({
+      project: currentProject(),
+      article_id: presenterSelected.articleId,
+      note_type: $('presenterNoteType').value,
+      content: $('presenterNoteContent').value,
+      source_anchor: `${$('presenterNoteAnchor').value} [${presenterSelected.path || 'general'}]`,
+      is_pinned: false,
+    }),
+  });
+  $('presenterNoteContent').value = '';
+  await loadPresenterNotes();
+}
+
+async function loadPresenterNotes() {
+  const rows = await api(`/api/notes?project=${encodeURIComponent(currentProject())}`);
+  const ul = $('presenterNotesList');
+  ul.innerHTML = '';
+  const filtered = rows.filter((n) => {
+    if (presenterSelected.articleId && n.article_id === presenterSelected.articleId) return true;
+    if (presenterSelected.path && (n.source_anchor || '').includes(`[${presenterSelected.path}]`)) return true;
+    return !presenterSelected.path;
+  });
+  for (const n of filtered) {
+    const li = document.createElement('li');
+    li.innerHTML = `<strong>${n.note_type}</strong><div>${n.content}</div><small>${n.source_anchor || '-'}</small>`;
+    ul.appendChild(li);
+  }
+}
+
+async function addArticleByFile() {
+  const file = $('managementArticleFile').files[0];
+  if (!file) throw new Error('select a file first');
+  const file_data = await fileToDataUrl(file);
+  const out = await api('/api/articles/from-file', {
+    method: 'POST',
+    body: JSON.stringify({ project: currentProject(), file_name: file.name, file_data }),
+  });
+  $('managementArticleFile').value = '';
+  $('addArticleMsg').textContent = `Added from file. Cluster: ${out.nlp_cluster}; Keywords: ${(out.keywords || []).join(', ')}`;
+  await loadAll();
+}
+
+function renderManagementPlots(rows) {
+  const root = $('managementPlots');
+  root.innerHTML = '';
+  const counters = { tags: {}, decisions: {}, read: {} };
+  for (const a of rows) {
+    counters.decisions[a.decision_flag] = (counters.decisions[a.decision_flag] || 0) + 1;
+    counters.read[a.read_status] = (counters.read[a.read_status] || 0) + 1;
+    for (const t of (a.tags || [])) counters.tags[t] = (counters.tags[t] || 0) + 1;
+  }
+  const blocks = [
+    ['Decision', counters.decisions],
+    ['Read Status', counters.read],
+    ['Top Tags', Object.fromEntries(Object.entries(counters.tags).sort((a,b)=>b[1]-a[1]).slice(0,8))],
+  ];
+  for (const [title, data] of blocks) {
+    const card = document.createElement('div');
+    card.className = 'metric';
+    card.innerHTML = `<strong>${title}</strong>`;
+    const total = Math.max(1, Object.values(data).reduce((x,y)=>x+y,0));
+    for (const [k,v] of Object.entries(data)) {
+      const bar = document.createElement('div');
+      bar.className = 'bar';
+      bar.innerHTML = `<span>${k} (${v})</span><i style="width:${Math.round((v/total)*100)}%"></i>`;
+      card.appendChild(bar);
+    }
+    root.appendChild(card);
+  }
+}
 
 async function loadLatexFiles() {
   const rows = await api(`/api/project-files?project=${encodeURIComponent(currentProject())}`);
@@ -497,14 +632,7 @@ async function saveCurrentLatexFile() {
 
 async function renderLatex() {
   const source = $('latexInput').value;
-  const preview = $('latexPreview');
-  preview.textContent = extractDocumentBody(source);
-
-  if (window.MathJax?.typesetPromise && !hasBeamerFrameEnvironment(source)) {
-    await window.MathJax.typesetPromise([$('latexPreview')]);
-  } else if (hasBeamerFrameEnvironment(source)) {
-    $('latexRenderLog').textContent = 'Math preview skipped: Beamer frame environments are not supported by MathJax preview. PDF rendering still runs with pdflatex.';
-  }
+  $('latexPreview').textContent = '';
 
   const result = await api('/api/latex/render', {
     method: 'POST',
@@ -517,7 +645,7 @@ async function renderLatex() {
 async function loadAll() {
   if (!currentProject()) return;
   syncExportLinks();
-  await Promise.all([loadDashboard(), loadArticles(), loadCaptures(), loadNotes(), loadChecklist(), loadLatexFiles()]);
+  await Promise.all([loadDashboard(), loadArticles(), loadCaptures(), loadNotes(), loadChecklist(), loadLatexFiles(), loadPresenterFiles(), loadPresenterNotes()]);
   await loadAnalysis();
 }
 
@@ -541,5 +669,11 @@ $('addCheckBtn').addEventListener('click', () => addChecklist().catch((e) => ale
 $('saveLatexPathBtn').addEventListener('click', () => saveLatexPath().catch((e) => alert(e.message)));
 $('saveLatexFileBtn').addEventListener('click', () => saveCurrentLatexFile().catch((e) => alert(e.message)));
 $('renderLatexBtn').addEventListener('click', () => renderLatex().catch((e) => { $('latexRenderLog').textContent = e.message; alert(e.message); }));
+$('zoomInBtn').addEventListener('click', () => { presenterScale = Math.min(3, presenterScale + 0.1); applyPresenterZoom(); });
+$('zoomOutBtn').addEventListener('click', () => { presenterScale = Math.max(0.4, presenterScale - 0.1); applyPresenterZoom(); });
+$('zoomResetBtn').addEventListener('click', () => { presenterScale = 1; applyPresenterZoom(); });
+$('savePresenterNoteBtn').addEventListener('click', () => savePresenterNote().catch((e) => alert(e.message)));
+$('addArticleByFileBtn').addEventListener('click', () => addArticleByFile().catch((e) => alert(e.message)));
 
+applyPresenterZoom();
 refreshProjects().catch(() => {});
