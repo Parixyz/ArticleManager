@@ -338,17 +338,86 @@ async function addChecklist() {
   await loadChecklist();
 }
 
-function renderLatex() {
+function selectedLatexPath() {
+  return $('latexCurrentPath').value.trim();
+}
+
+function latexFileTreeNode(file) {
+  const li = document.createElement('li');
+  const btn = document.createElement('button');
+  btn.textContent = `${file.file_type === 'directory' ? '📁' : '📄'} ${file.path}`;
+  btn.className = 'link-like';
+  btn.addEventListener('click', () => {
+    $('latexCurrentPath').value = file.path;
+    if (file.file_type === 'file') $('latexInput').value = file.content || '';
+  });
+  li.appendChild(btn);
+  return li;
+}
+
+async function loadLatexFiles() {
+  const rows = await api(`/api/project-files?project=${encodeURIComponent(currentProject())}`);
+  const tree = $('latexFileTree');
+  tree.innerHTML = '';
+  for (const f of rows) tree.appendChild(latexFileTreeNode(f));
+
+  const firstTex = rows.find((r) => r.file_type === 'file' && r.path.endsWith('.tex'));
+  if (!selectedLatexPath() && firstTex) {
+    $('latexCurrentPath').value = firstTex.path;
+    $('latexInput').value = firstTex.content || '';
+  }
+}
+
+async function saveLatexPath() {
+  const path = $('latexPathInput').value.trim();
+  const file_type = $('latexPathType').value;
+  if (!path) throw new Error('path is required');
+  await api('/api/project-files', {
+    method: 'POST',
+    body: JSON.stringify({
+      project: currentProject(),
+      path,
+      file_type,
+      content: file_type === 'file' ? (path.endsWith('.tex') ? $('latexInput').value : '') : '',
+    }),
+  });
+  $('latexPathInput').value = '';
+  await loadLatexFiles();
+}
+
+async function saveCurrentLatexFile() {
+  const path = selectedLatexPath() || $('latexPathInput').value.trim();
+  if (!path) throw new Error('select or provide a file path');
+  await api('/api/project-files', {
+    method: 'POST',
+    body: JSON.stringify({
+      project: currentProject(),
+      path,
+      file_type: 'file',
+      content: $('latexInput').value,
+    }),
+  });
+  $('latexCurrentPath').value = path;
+  await loadLatexFiles();
+}
+
+async function renderLatex() {
   $('latexPreview').textContent = extractDocumentBody($('latexInput').value);
   if (window.MathJax?.typesetPromise) {
-    window.MathJax.typesetPromise([$('latexPreview')]);
+    await window.MathJax.typesetPromise([$('latexPreview')]);
   }
+  const result = await api('/api/latex/render', {
+    method: 'POST',
+    body: JSON.stringify({ latex: $('latexInput').value }),
+  });
+  $('latexPdfFrame').src = result.pdf_data || '';
+  $('latexRenderLog').textContent = result.log || '';
 }
 
 async function loadAll() {
   if (!currentProject()) return;
   syncExportLinks();
-  await Promise.all([loadDashboard(), loadArticles(), loadCaptures(), loadNotes(), loadChecklist()]);
+  await Promise.all([loadDashboard(), loadArticles(), loadCaptures(), loadNotes(), loadChecklist(), loadLatexFiles()]);
   await loadAnalysis();
 }
 
@@ -365,6 +434,8 @@ $('saveNoteBtn').addEventListener('click', () => saveNote().catch((e) => alert(e
 $('searchNotesBtn').addEventListener('click', () => loadNotes().catch((e) => alert(e.message)));
 $('buildTableBtn').addEventListener('click', () => buildComparison().catch((e) => alert(e.message)));
 $('addCheckBtn').addEventListener('click', () => addChecklist().catch((e) => alert(e.message)));
-$('renderLatexBtn').addEventListener('click', renderLatex);
+$('saveLatexPathBtn').addEventListener('click', () => saveLatexPath().catch((e) => alert(e.message)));
+$('saveLatexFileBtn').addEventListener('click', () => saveCurrentLatexFile().catch((e) => alert(e.message)));
+$('renderLatexBtn').addEventListener('click', () => renderLatex().catch((e) => { $('latexRenderLog').textContent = e.message; alert(e.message); }));
 
 refreshProjects().catch(() => {});
