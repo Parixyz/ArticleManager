@@ -25,6 +25,9 @@
       <button id="createProjectBtn">Create Project</button>
       <select id="projectSelect"></select>
       <button id="refreshBtn">Refresh</button>
+      <button id="saveDbBtn">Save DB</button>
+      <input id="loadDbFile" type="file" accept=".db,application/octet-stream" />
+      <button id="loadDbBtn">Load DB</button>
       <a id="exportCsvLink" href="#">Export CSV</a>
       <a id="exportBibLink" href="#">Export .bib</a>
     </section>
@@ -42,7 +45,7 @@
 
     <section id="presenterTab" class="panel active card">
       <h2>Presenter</h2>
-      <p class="hint">Left: all project files with <code>SourceArticles/</code> and <code>.bib</code>. Center: preview + zoom. Right: notes for the selected file/article.</p>
+      <p class="hint">Left: all project files with <code>SourceArticles/</code> and <code>.bib</code>. Center: preview + zoom + fullscreen (Esc to exit). Right: notes for the selected file/article.</p>
       <div class="presenter-layout">
         <aside class="presenter-files">
           <h3>Project File Path</h3>
@@ -61,7 +64,7 @@
             <button id="zoomInBtn">+</button>
             <button id="zoomFitBtn">Fit Width</button>
             <label><input type="checkbox" id="presenterEnableZoom" checked /> zoom enabled</label>
-            <button id="presenterFullViewBtn">Full View</button>
+            <button id="presenterFullViewBtn">Full Screen</button>
             <button id="presenterRenderMainBtn">Render main.tex</button>
             <button id="presenterOpenMainBtn">Open main.tex</button>
           </div>

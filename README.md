@@ -29,10 +29,11 @@ A user-friendly, survey-first research manager with a **database-backed GUI**, s
   - validation warnings (missing author/year/title/venue, malformed).
 - Export:
   - project CSV,
-  - project `.bib`.
+  - project `.bib`,
+  - full database snapshot (`.db`) save/load from UI.
 - LaTeX render tab using MathJax (live preview).
 - Presenter upgrades:
-  - full-view toggle for center preview pane,
+  - full-screen toggle for center preview pane (Esc to exit),
   - zoom enable/disable with wheel + keyboard shortcuts,
   - fit-width zoom preset,
   - file tree search/filter,
@@ -40,7 +41,8 @@ A user-friendly, survey-first research manager with a **database-backed GUI**, s
   - bulk multi-file add into `SourceArticles/`.
 - Project bootstrap defaults:
   - `SourceArticles/` and `.bib/` directories,
-  - `main.tex` + `.bib/references.bib` created automatically.
+  - `main.tex` + `.bib/references.bib` created automatically,
+  - each new article gets its own folder under `SourceArticles/`.
 
 ## Run
 
@@ -96,6 +98,8 @@ $env:PDFLATEX_PATH = "C:\Program Files\MiKTeX\miktex\bin\x64\pdflatex.exe"
 - `GET /api/comparison?project=...&article_ids=1,2,3`
 - `GET /api/export/articles.csv?project=...`
 - `GET /api/export/project.bib?project=...`
+- `GET /api/database/export`
+- `POST /api/database/import`
 
 ## Data
 

@@ -1,7 +1,7 @@
 import unittest
 from unittest.mock import patch
 
-from app import DEFAULT_MAIN_TEX, bib_warnings, choose_cluster, ensure_default_project_files, infer_article_fields, resolve_pdflatex_cmd, sanitize_project_name, top_keywords
+from app import DEFAULT_MAIN_TEX, bib_warnings, choose_cluster, ensure_default_project_files, infer_article_fields, resolve_pdflatex_cmd, sanitize_project_name, top_keywords, validate_database_file
 
 
 class LogicTests(unittest.TestCase):
@@ -65,6 +65,30 @@ class LogicTests(unittest.TestCase):
             ('SourceArticles', 'directory'),
             ('main.tex', 'file'),
         })
+
+
+    def test_validate_database_file_accepts_sqlite_with_projects_table(self):
+        import sqlite3
+        import tempfile
+        from pathlib import Path
+
+        with tempfile.TemporaryDirectory() as td:
+            path = Path(td) / 'ok.db'
+            with sqlite3.connect(path) as conn:
+                conn.execute('CREATE TABLE projects (id INTEGER PRIMARY KEY)')
+            validate_database_file(path)
+
+    def test_validate_database_file_rejects_missing_projects_table(self):
+        import sqlite3
+        import tempfile
+        from pathlib import Path
+
+        with tempfile.TemporaryDirectory() as td:
+            path = Path(td) / 'bad.db'
+            with sqlite3.connect(path) as conn:
+                conn.execute('CREATE TABLE something_else (id INTEGER PRIMARY KEY)')
+            with self.assertRaises(ValueError):
+                validate_database_file(path)
 
 
 if __name__ == '__main__':

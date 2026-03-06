@@ -354,6 +354,26 @@ def db_conn() -> sqlite3.Connection:
     return conn
 
 
+def validate_database_file(path: Path) -> None:
+    with sqlite3.connect(path) as conn:
+        row = conn.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='projects'").fetchone()
+        if row is None:
+            raise ValueError("uploaded database is missing required tables")
+
+
+def replace_database(raw: bytes) -> None:
+    if not raw:
+        raise ValueError("database payload is empty")
+    tmp_path = DB_PATH.with_suffix(".uploaded.tmp")
+    tmp_path.write_bytes(raw)
+    try:
+        validate_database_file(tmp_path)
+        tmp_path.replace(DB_PATH)
+    finally:
+        if tmp_path.exists():
+            tmp_path.unlink()
+
+
 def get_project_id(conn: sqlite3.Connection, project_name: str) -> int:
     row = conn.execute("SELECT id FROM projects WHERE name=?", (project_name,)).fetchone()
     if not row:
@@ -413,6 +433,8 @@ class AppHandler(SimpleHTTPRequestHandler):
             return self._export_articles_csv(parsed.query)
         if p == "/api/export/project.bib":
             return self._export_bib(parsed.query)
+        if p == "/api/database/export":
+            return self._export_database()
         if p == "/":
             self.path = "/index.html"
         return super().do_GET()
@@ -448,6 +470,8 @@ class AppHandler(SimpleHTTPRequestHandler):
             return self._upsert_project_file()
         if p == "/api/latex/render":
             return self._render_latex_pdf()
+        if p == "/api/database/import":
+            return self._import_database()
         self._json_response({"error": "Not found"}, HTTPStatus.NOT_FOUND)
 
     def do_PUT(self):
@@ -626,6 +650,29 @@ class AppHandler(SimpleHTTPRequestHandler):
                 """INSERT INTO article_files(article_id,file_name,full_text,section_segmentation,references_extraction,metadata_extraction,created_at)
                 VALUES(?,?,?,?,?,?,?)""",
                 (article_id, "primary", "", "", "", "", utc_now()),
+            )
+            article_folder = f"SourceArticles/{normalize_title(title)[:60] or f'article_{article_id}'}"
+            now = utc_now()
+            conn.execute(
+                """INSERT INTO project_files(project_id,path,file_type,content,linked_capture_id,created_at,updated_at)
+                VALUES(?,?,?,?,?,?,?)
+                ON CONFLICT(project_id,path)
+                DO UPDATE SET file_type=excluded.file_type,updated_at=excluded.updated_at""",
+                (pid, "SourceArticles", "directory", "", None, now, now),
+            )
+            conn.execute(
+                """INSERT INTO project_files(project_id,path,file_type,content,linked_capture_id,created_at,updated_at)
+                VALUES(?,?,?,?,?,?,?)
+                ON CONFLICT(project_id,path)
+                DO UPDATE SET file_type=excluded.file_type,updated_at=excluded.updated_at""",
+                (pid, article_folder, "directory", "", None, now, now),
+            )
+            conn.execute(
+                """INSERT INTO project_files(project_id,path,file_type,content,linked_capture_id,created_at,updated_at)
+                VALUES(?,?,?,?,?,?,?)
+                ON CONFLICT(project_id,path)
+                DO UPDATE SET file_type=excluded.file_type,content=excluded.content,updated_at=excluded.updated_at""",
+                (pid, f"{article_folder}/README.txt", "file", f"Article: {title}\nCreated: {now}\n", None, now, now),
             )
         self._json_response({"id": article_id, "nlp_cluster": inferred, "keywords": keywords, "duplicate_like": [dict(x) for x in dup]}, 201)
 
@@ -1071,7 +1118,15 @@ class AppHandler(SimpleHTTPRequestHandler):
                 DO UPDATE SET file_type=excluded.file_type,updated_at=excluded.updated_at""",
                 (pid, "SourceArticles", "directory", "", None, utc_now(), utc_now()),
             )
-            source_path = f"SourceArticles/{file_name}"
+            source_base = f"SourceArticles/{normalize_title(title)[:60] or f'article_{article_id}'}"
+            conn.execute(
+                """INSERT INTO project_files(project_id,path,file_type,content,linked_capture_id,created_at,updated_at)
+                VALUES(?,?,?,?,?,?,?)
+                ON CONFLICT(project_id,path)
+                DO UPDATE SET file_type=excluded.file_type,updated_at=excluded.updated_at""",
+                (pid, source_base, "directory", "", None, utc_now(), utc_now()),
+            )
+            source_path = f"{source_base}/{file_name}"
             conn.execute(
                 """INSERT INTO project_files(project_id,path,file_type,content,linked_capture_id,created_at,updated_at)
                 VALUES(?,?,?,?,?,?,?)
@@ -1091,6 +1146,29 @@ class AppHandler(SimpleHTTPRequestHandler):
                 )
 
         self._json_response({"id": article_id, "nlp_cluster": inferred, "keywords": keywords, "duplicate_like": [dict(x) for x in dup]}, 201)
+
+    def _export_database(self):
+        payload = DB_PATH.read_bytes() if DB_PATH.exists() else b""
+        self.send_response(200)
+        self.send_header("Content-Type", "application/octet-stream")
+        self.send_header("Content-Length", str(len(payload)))
+        self.send_header("Content-Disposition", "attachment; filename=article_manager.db")
+        self.end_headers()
+        self.wfile.write(payload)
+
+    def _import_database(self):
+        p = self._parse_json()
+        db_data = p.get("db_data", "").strip()
+        if not db_data:
+            return self._json_response({"error": "db_data required"}, 400)
+        _, raw = decode_data_url(db_data)
+        try:
+            replace_database(raw)
+            init_db()
+            ensure_schema_migrations()
+        except ValueError as exc:
+            return self._json_response({"error": str(exc)}, 400)
+        self._json_response({"status": "database loaded"}, 201)
 
     def _render_latex_pdf(self):
         p = self._parse_json()
