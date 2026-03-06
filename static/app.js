@@ -108,19 +108,52 @@ async function loadArticles() {
   if ($('searchQuery').value.trim()) q.set('search', $('searchQuery').value.trim());
   if ($('filterDecision').value) q.set('decision_flag', $('filterDecision').value);
   if ($('filterRead').value) q.set('read_status', $('filterRead').value);
+  if ($('filterCategory').value.trim()) q.set('category', $('filterCategory').value.trim());
+  if ($('filterCluster').value.trim()) q.set('nlp_cluster', $('filterCluster').value.trim());
+  if ($('filterTag').value.trim()) q.set('tag', $('filterTag').value.trim());
   const rows = await api(`/api/articles?${q.toString()}`);
   const ul = $('articleList');
   ul.innerHTML = '';
+  const groups = {};
+  const groupBy = $('groupBy').value;
+  $('articleGroups').innerHTML = '';
   for (const a of rows) {
     const li = document.createElement('li');
     li.innerHTML = `<strong>[${a.id}] ${a.title}</strong> <span class='badge'>${a.role}</span> <span class='badge info'>${a.nlp_cluster}</span>
-      <div><small>task:${a.research_task || '-'} | methods:${(a.method_tags||[]).join(', ')} | evidence:${a.evidence_strength} | relevance:${a.relevance_score}</small></div>
-      <div><small>read:${a.read_status} | decision:${a.decision_flag} | venue:${a.venue || '-'} (${a.year || '-'})</small></div>`;
+      <div><small>task:${a.research_task || '-'} | methods:${(a.method_tags||[]).join(', ')} | tags:${(a.tags||[]).join(', ')} | evidence:${a.evidence_strength} | relevance:${a.relevance_score}</small></div>
+      <div><small>read:${a.read_status} | decision:${a.decision_flag} | venue:${a.venue || '-'} (${a.year || '-'}) | category:${a.category || '-'}</small></div>`;
     ul.appendChild(li);
+    const key = groupBy === 'category' ? (a.category || 'uncategorized') : groupBy === 'cluster' ? (a.nlp_cluster || 'general') : '';
+    if (key) groups[key] = (groups[key] || 0) + 1;
+  }
+  if (groupBy !== 'none') {
+    const g = $('articleGroups');
+    Object.entries(groups).sort((a, b) => b[1] - a[1]).forEach(([k, v]) => {
+      const chip = document.createElement('span');
+      chip.className = 'badge';
+      chip.textContent = `${k}: ${v}`;
+      g.appendChild(chip);
+    });
   }
   fillArticleSelect('analysisArticleSelect', rows);
   fillArticleSelect('captureArticleSelect', rows);
+  loadCaptureDocuments().catch(() => {});
   fillArticleSelect('noteArticleSelect', rows);
+}
+
+async function autoFillArticle() {
+  const out = await api('/api/articles/autofill', {
+    method: 'POST',
+    body: JSON.stringify({
+      title: $('aTitle').value,
+      notes: $('aNotes').value,
+      source_url: $('aSource').value,
+    }),
+  });
+  if (!$('aCategory').value) $('aCategory').value = out.category || '';
+  if (!$('aVenue').value) $('aVenue').value = out.venue || '';
+  if (!$('aYear').value) $('aYear').value = out.year || '';
+  if (!$('aTags').value) $('aTags').value = (out.tags || []).join(', ');
 }
 
 async function addArticle() {
@@ -131,6 +164,7 @@ async function addArticle() {
     category: $('aCategory').value,
     research_task: $('aTask').value,
     method_tags: parseMethodTags($('aMethodTags').value),
+    tags: parseMethodTags($('aTags').value),
     authors: $('aAuthors').value,
     venue: $('aVenue').value,
     year: $('aYear').value,
@@ -143,8 +177,40 @@ async function addArticle() {
   };
   const out = await api('/api/articles', { method: 'POST', body: JSON.stringify(payload) });
   $('addArticleMsg').textContent = `Cluster: ${out.nlp_cluster}; Keywords: ${(out.keywords || []).join(', ')}${out.duplicate_like?.length ? ' | duplicate warning!' : ''}`;
-  ['aTitle','aSource','aCategory','aTask','aMethodTags','aAuthors','aVenue','aYear','aNotes'].forEach((x) => ($(x).value = ''));
+  ['aTitle','aSource','aCategory','aTask','aMethodTags','aAuthors','aVenue','aYear','aNotes','aTags'].forEach((x) => ($(x).value = ''));
   await loadAll();
+}
+
+async function uploadArticleDocument() {
+  const file = $('articleDocumentFile').files[0];
+  const article_id = Number($('analysisArticleSelect').value || 0);
+  if (!file || !article_id) throw new Error('select article and file');
+  const file_data = await fileToDataUrl(file);
+  await api('/api/article-documents', {
+    method: 'POST',
+    body: JSON.stringify({ article_id, file_name: file.name, mime_type: file.type || 'application/octet-stream', file_data }),
+  });
+  $('articleDocumentFile').value = '';
+  await loadArticleDocuments();
+}
+
+async function loadArticleDocuments() {
+  const article_id = Number($('analysisArticleSelect').value || 0);
+  if (!article_id) return;
+  const rows = await api(`/api/article-documents?article_id=${article_id}`);
+  const ul = $('articleDocumentList');
+  ul.innerHTML = '';
+  const capSel = $('captureDocumentSelect');
+  capSel.innerHTML = '<option value="">No source file</option>';
+  for (const d of rows) {
+    const li = document.createElement('li');
+    li.innerHTML = `<strong>${d.file_name}</strong> <small>${d.mime_type}</small>`;
+    ul.appendChild(li);
+    const o = document.createElement('option');
+    o.value = d.id;
+    o.textContent = `${d.id} - ${d.file_name}`;
+    capSel.appendChild(o);
+  }
 }
 
 async function loadAnalysis() {
@@ -174,6 +240,7 @@ async function loadAnalysis() {
   $('afSections').value = fileData.section_segmentation || '';
   $('afReferences').value = fileData.references_extraction || '';
   $('afMetadata').value = fileData.metadata_extraction || '';
+  await loadArticleDocuments();
 }
 
 async function saveAnalysis() {
@@ -232,6 +299,20 @@ function fileToDataUrl(file) {
   });
 }
 
+async function loadCaptureDocuments() {
+  const article_id = Number($('captureArticleSelect').value || 0);
+  const capSel = $('captureDocumentSelect');
+  capSel.innerHTML = '<option value="">No source file</option>';
+  if (!article_id) return;
+  const rows = await api(`/api/article-documents?article_id=${article_id}`);
+  for (const d of rows) {
+    const o = document.createElement('option');
+    o.value = d.id;
+    o.textContent = `${d.id} - ${d.file_name}`;
+    capSel.appendChild(o);
+  }
+}
+
 async function saveCapture() {
   const file = $('captureFile').files[0];
   const screenshot_data = file ? await fileToDataUrl(file) : '';
@@ -240,6 +321,7 @@ async function saveCapture() {
     body: JSON.stringify({
       project: currentProject(),
       article_id: Number($('captureArticleSelect').value || 0) || null,
+      document_id: Number($('captureDocumentSelect').value || 0) || null,
       capture_type: screenshot_data ? 'screenshot' : 'selection',
       screenshot_data,
       selected_text: $('captureText').value,
@@ -261,16 +343,24 @@ async function saveCapture() {
 async function loadCaptures() {
   const rows = await api(`/api/captures?project=${encodeURIComponent(currentProject())}`);
   const grid = $('captureGrid');
+  const gallery = $('captureGallery');
   grid.innerHTML = '';
+  gallery.innerHTML = '';
   for (const c of rows) {
     const card = document.createElement('div');
     card.className = 'capture';
     const img = c.screenshot_data ? `<img src="${c.screenshot_data}" alt="capture" />` : '';
     card.innerHTML = `<small>${c.created_at}</small><div><strong>${c.page_title || 'no title'}</strong></div>
       <div><small>${c.page_url || '-'}</small></div>
-      <div><small>tag:${c.tag || '-'} | article:${c.article_id || '-'}</small></div>
+      <div><small>tag:${c.tag || '-'} | article:${c.article_id || '-'} | file:${c.document_name || c.document_id || '-'}</small></div>
       <p>${c.selected_text || ''}</p><p>${c.comment || ''}</p>${img}`;
     grid.appendChild(card);
+    if (c.screenshot_data) {
+      const g = document.createElement('div');
+      g.className = 'capture';
+      g.innerHTML = `<img src="${c.screenshot_data}" alt="capture" /><small>article:${c.article_id || '-'} doc:${c.document_id || '-'} tag:${c.tag || '-'}</small>`;
+      gallery.appendChild(g);
+    }
   }
 }
 
@@ -338,17 +428,86 @@ async function addChecklist() {
   await loadChecklist();
 }
 
-function renderLatex() {
+function selectedLatexPath() {
+  return $('latexCurrentPath').value.trim();
+}
+
+function latexFileTreeNode(file) {
+  const li = document.createElement('li');
+  const btn = document.createElement('button');
+  btn.textContent = `${file.file_type === 'directory' ? '📁' : '📄'} ${file.path}`;
+  btn.className = 'link-like';
+  btn.addEventListener('click', () => {
+    $('latexCurrentPath').value = file.path;
+    if (file.file_type === 'file') $('latexInput').value = file.content || '';
+  });
+  li.appendChild(btn);
+  return li;
+}
+
+async function loadLatexFiles() {
+  const rows = await api(`/api/project-files?project=${encodeURIComponent(currentProject())}`);
+  const tree = $('latexFileTree');
+  tree.innerHTML = '';
+  for (const f of rows) tree.appendChild(latexFileTreeNode(f));
+
+  const firstTex = rows.find((r) => r.file_type === 'file' && r.path.endsWith('.tex'));
+  if (!selectedLatexPath() && firstTex) {
+    $('latexCurrentPath').value = firstTex.path;
+    $('latexInput').value = firstTex.content || '';
+  }
+}
+
+async function saveLatexPath() {
+  const path = $('latexPathInput').value.trim();
+  const file_type = $('latexPathType').value;
+  if (!path) throw new Error('path is required');
+  await api('/api/project-files', {
+    method: 'POST',
+    body: JSON.stringify({
+      project: currentProject(),
+      path,
+      file_type,
+      content: file_type === 'file' ? (path.endsWith('.tex') ? $('latexInput').value : '') : '',
+    }),
+  });
+  $('latexPathInput').value = '';
+  await loadLatexFiles();
+}
+
+async function saveCurrentLatexFile() {
+  const path = selectedLatexPath() || $('latexPathInput').value.trim();
+  if (!path) throw new Error('select or provide a file path');
+  await api('/api/project-files', {
+    method: 'POST',
+    body: JSON.stringify({
+      project: currentProject(),
+      path,
+      file_type: 'file',
+      content: $('latexInput').value,
+    }),
+  });
+  $('latexCurrentPath').value = path;
+  await loadLatexFiles();
+}
+
+async function renderLatex() {
   $('latexPreview').textContent = extractDocumentBody($('latexInput').value);
   if (window.MathJax?.typesetPromise) {
-    window.MathJax.typesetPromise([$('latexPreview')]);
+    await window.MathJax.typesetPromise([$('latexPreview')]);
   }
+  const result = await api('/api/latex/render', {
+    method: 'POST',
+    body: JSON.stringify({ latex: $('latexInput').value }),
+  });
+  $('latexPdfFrame').src = result.pdf_data || '';
+  $('latexRenderLog').textContent = result.log || '';
 }
 
 async function loadAll() {
   if (!currentProject()) return;
   syncExportLinks();
-  await Promise.all([loadDashboard(), loadArticles(), loadCaptures(), loadNotes(), loadChecklist()]);
+  await Promise.all([loadDashboard(), loadArticles(), loadCaptures(), loadNotes(), loadChecklist(), loadLatexFiles()]);
   await loadAnalysis();
 }
 
@@ -356,15 +515,21 @@ $('createProjectBtn').addEventListener('click', () => createProject().catch((e) 
 $('refreshBtn').addEventListener('click', () => refreshProjects().catch((e) => alert(e.message)));
 $('projectSelect').addEventListener('change', () => loadAll().catch((e) => alert(e.message)));
 $('applyFilterBtn').addEventListener('click', () => loadArticles().catch((e) => alert(e.message)));
+$('autoFillArticleBtn').addEventListener('click', () => autoFillArticle().catch((e) => alert(e.message)));
 $('addArticleBtn').addEventListener('click', () => addArticle().catch((e) => alert(e.message)));
 $('analysisArticleSelect').addEventListener('change', () => loadAnalysis().catch((e) => alert(e.message)));
+$('uploadArticleDocumentBtn').addEventListener('click', () => uploadArticleDocument().catch((e) => alert(e.message)));
+$('groupBy').addEventListener('change', () => loadArticles().catch((e) => alert(e.message)));
 $('saveAnalysisBtn').addEventListener('click', () => saveAnalysis().catch((e) => alert(e.message)));
 $('saveArticleFileBtn').addEventListener('click', () => saveArticleFile().catch((e) => alert(e.message)));
+$('captureArticleSelect').addEventListener('change', () => loadCaptureDocuments().catch((e) => alert(e.message)));
 $('saveCaptureBtn').addEventListener('click', () => saveCapture().catch((e) => alert(e.message)));
 $('saveNoteBtn').addEventListener('click', () => saveNote().catch((e) => alert(e.message)));
 $('searchNotesBtn').addEventListener('click', () => loadNotes().catch((e) => alert(e.message)));
 $('buildTableBtn').addEventListener('click', () => buildComparison().catch((e) => alert(e.message)));
 $('addCheckBtn').addEventListener('click', () => addChecklist().catch((e) => alert(e.message)));
-$('renderLatexBtn').addEventListener('click', renderLatex);
+$('saveLatexPathBtn').addEventListener('click', () => saveLatexPath().catch((e) => alert(e.message)));
+$('saveLatexFileBtn').addEventListener('click', () => saveCurrentLatexFile().catch((e) => alert(e.message)));
+$('renderLatexBtn').addEventListener('click', () => renderLatex().catch((e) => { $('latexRenderLog').textContent = e.message; alert(e.message); }));
 
 refreshProjects().catch(() => {});

@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>ArticleManager Presentor</title>
+  <title>ArticleManager Presenter</title>
   <link rel="stylesheet" href="/static/styles.css" />
   <script>
     window.MathJax = { tex: { inlineMath: [['$', '$'], ['\\(', '\\)']] } };
@@ -13,7 +13,7 @@
 <body>
   <main class="container">
     <header class="card">
-      <h1>ArticleManager Presentor</h1>
+      <h1>ArticleManager Presenter</h1>
       <p>Survey-focused workspace: understand papers, compare them, capture evidence, take notes side-by-side, and export outputs.</p>
     </header>
 
@@ -30,7 +30,7 @@
     </section>
 
     <section class="tabs">
-      <button class="tab active" data-target="presentorTab">Presentor</button>
+      <button class="tab active" data-target="presenterTab">Presenter</button>
       <button class="tab" data-target="managementTab">Management</button>
       <button class="tab" data-target="analysisTab">Structured Analysis</button>
       <button class="tab" data-target="capturesTab">Screenshots & Evidence</button>
@@ -40,7 +40,7 @@
       <button class="tab" data-target="checklistTab">Checklist</button>
     </section>
 
-    <section id="presentorTab" class="panel active card">
+    <section id="presenterTab" class="panel active card">
       <h2>Project Intelligence Dashboard</h2>
       <div id="dashboardGrid" class="grid"></div>
       <h3>Quick search/filter</h3>
@@ -48,8 +48,15 @@
         <input id="searchQuery" placeholder="Search title/notes/authors/venue" />
         <select id="filterDecision"><option value="">Any decision</option><option>include</option><option>maybe</option><option>exclude</option></select>
         <select id="filterRead"><option value="">Any read status</option><option>unread</option><option>skimmed</option><option>read</option><option>deeply analyzed</option></select>
+        <input id="filterCategory" placeholder="Category" />
+        <input id="filterCluster" placeholder="Cluster" />
+        <input id="filterTag" placeholder="Tag" />
         <button id="applyFilterBtn">Apply Filter</button>
       </div>
+      <div class="row wrap">
+        <select id="groupBy"><option value="none">No Group</option><option value="category">Group by Category</option><option value="cluster">Group by Cluster</option></select>
+      </div>
+      <div id="articleGroups"></div>
       <ul id="articleList"></ul>
     </section>
 
@@ -69,8 +76,10 @@
         <select id="aRead"><option selected>unread</option><option>skimmed</option><option>read</option><option>deeply analyzed</option></select>
         <select id="aDecision"><option>include</option><option selected>maybe</option><option>exclude</option></select>
         <input id="aRelevance" type="number" min="0" max="100" value="50" placeholder="Relevance 0-100" />
+        <input id="aTags" placeholder="Tags (comma separated)" />
       </div>
       <textarea id="aNotes" rows="5" placeholder="Notes / abstract for NLP clustering"></textarea>
+      <button id="autoFillArticleBtn">Auto Fill Fields</button>
       <button id="addArticleBtn">Add Article</button>
       <div id="addArticleMsg" class="hint"></div>
     </section>
@@ -107,6 +116,12 @@
         <textarea id="afMetadata" placeholder="metadata extraction"></textarea>
       </div>
       <button id="saveArticleFileBtn">Save Article File</button>
+      <h3>Article Attachments</h3>
+      <div class="row wrap">
+        <input type="file" id="articleDocumentFile" />
+        <button id="uploadArticleDocumentBtn">Upload Attachment</button>
+      </div>
+      <ul id="articleDocumentList"></ul>
     </section>
 
     <section id="capturesTab" class="panel card">
@@ -117,10 +132,13 @@
         <input id="captureUrl" placeholder="source URL" />
         <input id="captureTitle" placeholder="page title" />
         <input id="captureTag" placeholder="tag/category" />
+        <select id="captureDocumentSelect"></select>
       </div>
       <textarea id="captureText" rows="3" placeholder="selected text / highlight"></textarea>
       <textarea id="captureComment" rows="2" placeholder="manual comment"></textarea>
       <button id="saveCaptureBtn">Save Capture</button>
+      <h3>Screenshot Gallery</h3>
+      <div id="captureGallery" class="grid"></div>
       <div id="captureGrid" class="grid"></div>
     </section>
 
@@ -156,11 +174,38 @@
     </section>
 
     <section id="latexTab" class="panel card">
-      <h2>LaTeX Render & Preview</h2>
-      <p class="hint">Tip: full documents are supported. If a <code>\documentclass ... \begin{document} ... \end{document}</code> wrapper is present, only the document body is rendered for preview.</p>
-      <textarea id="latexInput" rows="8">\n\n\\[ E = mc^2 \\]\n\n$\\alpha + \\beta$</textarea>
-      <button id="renderLatexBtn">Render</button>
-      <div id="latexPreview" class="latex-preview"></div>
+      <h2>LaTeX Workspace (Files, Editor, and PDF)</h2>
+      <p class="hint">Project-root LaTeX files are stored in DB and accessible as a file tree. Use the left pane to manage files/directories, edit current <code>.tex</code> on the right, then render to preview + PDF.</p>
+      <div class="latex-workspace">
+        <div class="latex-files">
+          <h3>Project Files</h3>
+          <ul id="latexFileTree"></ul>
+          <div class="row wrap">
+            <input id="latexPathInput" placeholder="path e.g. main.tex or figures" />
+            <select id="latexPathType"><option value="file">File</option><option value="directory">Directory</option></select>
+            <button id="saveLatexPathBtn">Add / Update</button>
+          </div>
+        </div>
+        <div class="latex-editor">
+          <h3>Current .tex</h3>
+          <input id="latexCurrentPath" placeholder="current file path" readonly />
+          <textarea id="latexInput" rows="14">\documentclass{article}
+\usepackage{amsmath}
+\begin{document}
+\[ E = mc^2 \\]
+
+$\alpha + \beta$
+\end{document}</textarea>
+          <div class="row wrap">
+            <button id="saveLatexFileBtn">Save Current File</button>
+            <button id="renderLatexBtn">Render</button>
+          </div>
+          <h3>Rendered View</h3>
+          <div id="latexPreview" class="latex-preview"></div>
+          <iframe id="latexPdfFrame" class="latex-pdf" title="Rendered PDF"></iframe>
+          <pre id="latexRenderLog" class="hint"></pre>
+        </div>
+      </div>
     </section>
 
     <section id="checklistTab" class="panel card">
