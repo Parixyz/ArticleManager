@@ -146,34 +146,42 @@ async function loadArticles() {
   if ($('filterCluster').value.trim()) q.set('nlp_cluster', $('filterCluster').value.trim());
   if ($('filterTag').value.trim()) q.set('tag', $('filterTag').value.trim());
   const rows = await api(`/api/articles?${q.toString()}`);
-  const ul = $('articleList');
-  ul.innerHTML = '';
-  const groups = {};
-  const groupBy = $('groupBy').value;
-  $('articleGroups').innerHTML = '';
+
+  const tbody = document.querySelector('#articleTable tbody');
+  tbody.innerHTML = '';
   for (const a of rows) {
-    const li = document.createElement('li');
-    li.innerHTML = `<strong>[${a.id}] ${a.title}</strong> <span class='badge'>${a.role}</span> <span class='badge info'>${a.nlp_cluster}</span>
-      <div><small>task:${a.research_task || '-'} | methods:${(a.method_tags||[]).join(', ')} | tags:${(a.tags||[]).join(', ')} | evidence:${a.evidence_strength} | relevance:${a.relevance_score}</small></div>
-      <div><small>read:${a.read_status} | decision:${a.decision_flag} | venue:${a.venue || '-'} (${a.year || '-'}) | category:${a.category || '-'}</small></div>`;
-    ul.appendChild(li);
-    const key = groupBy === 'category' ? (a.category || 'uncategorized') : groupBy === 'cluster' ? (a.nlp_cluster || 'general') : '';
-    if (key) groups[key] = (groups[key] || 0) + 1;
+    const tr = document.createElement('tr');
+    tr.innerHTML = `<td>${a.id}</td><td>${a.title}</td><td>${a.read_status}</td><td>${a.decision_flag}</td><td>${a.nlp_cluster}</td><td>${(a.tags || []).join(', ')}</td>`;
+    tr.addEventListener('click', () => selectArticleForEdit(a));
+    tbody.appendChild(tr);
   }
-  if (groupBy !== 'none') {
-    const g = $('articleGroups');
-    Object.entries(groups).sort((a, b) => b[1] - a[1]).forEach(([k, v]) => {
-      const chip = document.createElement('span');
-      chip.className = 'badge';
-      chip.textContent = `${k}: ${v}`;
-      g.appendChild(chip);
-    });
-  }
+
   renderManagementPlots(rows);
   fillArticleSelect('analysisArticleSelect', rows);
   fillArticleSelect('captureArticleSelect', rows);
   loadCaptureDocuments().catch(() => {});
   fillArticleSelect('noteArticleSelect', rows);
+}
+
+function selectArticleForEdit(a) {
+  $('editArticleId').value = String(a.id);
+  $('aTitle').value = a.title || '';
+  $('aSource').value = a.source_url || '';
+  $('aCategory').value = a.category || '';
+  $('aTask').value = a.research_task || '';
+  $('aMethodTags').value = (a.method_tags || []).join(', ');
+  $('aAuthors').value = a.authors || '';
+  $('aVenue').value = a.venue || '';
+  $('aYear').value = a.year || '';
+  $('aRole').value = a.role || 'background';
+  $('aEvidence').value = a.evidence_strength || 'unclear';
+  $('aRead').value = a.read_status || 'unread';
+  $('aDecision').value = a.decision_flag || 'maybe';
+  $('aRelevance').value = a.relevance_score || 50;
+  $('aTags').value = (a.tags || []).join(', ');
+  $('aNotes').value = a.notes || '';
+  $('analysisArticleSelect').value = String(a.id);
+  $('captureArticleSelect').value = String(a.id);
 }
 
 async function autoFillArticle() {
@@ -191,8 +199,8 @@ async function autoFillArticle() {
   if (!$('aTags').value) $('aTags').value = (out.tags || []).join(', ');
 }
 
-async function addArticle() {
-  const payload = {
+function articlePayloadFromEditor() {
+  return {
     project: currentProject(),
     title: $('aTitle').value,
     source_url: $('aSource').value,
@@ -210,9 +218,47 @@ async function addArticle() {
     relevance_score: Number($('aRelevance').value || 50),
     notes: $('aNotes').value,
   };
-  const out = await api('/api/articles', { method: 'POST', body: JSON.stringify(payload) });
-  $('addArticleMsg').textContent = `Cluster: ${out.nlp_cluster}; Keywords: ${(out.keywords || []).join(', ')}${out.duplicate_like?.length ? ' | duplicate warning!' : ''}`;
+}
+
+function resetArticleEditor() {
+  $('editArticleId').value = '';
   ['aTitle','aSource','aCategory','aTask','aMethodTags','aAuthors','aVenue','aYear','aNotes','aTags'].forEach((x) => ($(x).value = ''));
+  $('aRole').value = 'background';
+  $('aEvidence').value = 'unclear';
+  $('aRead').value = 'unread';
+  $('aDecision').value = 'maybe';
+  $('aRelevance').value = '50';
+}
+
+async function addArticle() {
+  const out = await api('/api/articles', { method: 'POST', body: JSON.stringify(articlePayloadFromEditor()) });
+  $('addArticleMsg').textContent = `Cluster: ${out.nlp_cluster}; Keywords: ${(out.keywords || []).join(', ')}${out.duplicate_like?.length ? ' | duplicate warning!' : ''}`;
+  resetArticleEditor();
+  await loadAll();
+}
+
+async function updateArticle() {
+  const article_id = Number($('editArticleId').value || 0);
+  if (!article_id) throw new Error('select an article from the table first');
+  await api('/api/articles/update', { method: 'POST', body: JSON.stringify({ article_id, ...articlePayloadFromEditor() }) });
+  $('addArticleMsg').textContent = `Article ${article_id} updated`;
+  await loadAll();
+}
+
+async function deleteArticle() {
+  const article_id = Number($('editArticleId').value || 0);
+  if (!article_id) throw new Error('select an article from the table first');
+  await api('/api/articles/delete', { method: 'POST', body: JSON.stringify({ article_id, project: currentProject() }) });
+  $('addArticleMsg').textContent = `Article ${article_id} deleted`;
+  resetArticleEditor();
+  await loadAll();
+}
+
+async function clearProjectArticles() {
+  if (!confirm('Clear all project articles?')) return;
+  await api('/api/articles/clear', { method: 'POST', body: JSON.stringify({ project: currentProject() }) });
+  resetArticleEditor();
+  $('addArticleMsg').textContent = 'All project articles were removed';
   await loadAll();
 }
 
@@ -608,6 +654,217 @@ function fitPresenterWidth() {
   presenterScale = 1.4;
   applyPresenterZoom();
 }
+
+async function renderPresenterMainTex() {
+  const result = await api('/api/latex/render', {
+    method: 'POST',
+    body: JSON.stringify({ project: currentProject(), main_tex_path: 'main.tex' }),
+  });
+  presenterSelected.path = 'main.tex';
+  $('presenterCurrentPath').textContent = 'main.tex (rendered)';
+  $('presenterTextPreview').classList.add('hidden');
+  $('presenterPdfFrame').classList.remove('hidden');
+  $('presenterPdfFrame').src = result.pdf_data || '';
+}
+
+async function savePresenterNote() {
+  await api('/api/notes', {
+    method: 'POST',
+    body: JSON.stringify({
+      project: currentProject(),
+      article_id: presenterSelected.articleId,
+      note_type: $('presenterNoteType').value,
+      content: $('presenterNoteContent').value,
+      source_anchor: `${$('presenterNoteAnchor').value} [${presenterSelected.path || 'general'}]`,
+      is_pinned: false,
+    }),
+  });
+  $('presenterNoteContent').value = '';
+  await loadPresenterNotes();
+}
+
+async function loadPresenterNotes() {
+  const rows = await api(`/api/notes?project=${encodeURIComponent(currentProject())}`);
+  const ul = $('presenterNotesList');
+  ul.innerHTML = '';
+  const filtered = rows.filter((n) => {
+    if (presenterSelected.articleId && n.article_id === presenterSelected.articleId) return true;
+    if (presenterSelected.path && (n.source_anchor || '').includes(`[${presenterSelected.path}]`)) return true;
+    return !presenterSelected.path;
+  });
+  for (const n of filtered) {
+    const li = document.createElement('li');
+    li.innerHTML = `<strong>${n.note_type}</strong><div>${n.content}</div><small>${n.source_anchor || '-'}</small>`;
+    ul.appendChild(li);
+  }
+}
+
+async function addArticleByFile() {
+  const file = $('managementArticleFile').files[0];
+  if (!file) throw new Error('select a file first');
+  const file_data = await fileToDataUrl(file);
+  const out = await api('/api/articles/from-file', {
+    method: 'POST',
+    body: JSON.stringify({ project: currentProject(), file_name: file.name, file_data }),
+  });
+  $('managementArticleFile').value = '';
+  $('addArticleMsg').textContent = `Added from file. Cluster: ${out.nlp_cluster}; Keywords: ${(out.keywords || []).join(', ')}`;
+  await loadAll();
+}
+
+function renderManagementPlots(rows) {
+  const root = $('managementPlots');
+  root.innerHTML = '';
+  const counters = { tags: {}, decisions: {}, read: {} };
+  for (const a of rows) {
+    counters.decisions[a.decision_flag] = (counters.decisions[a.decision_flag] || 0) + 1;
+    counters.read[a.read_status] = (counters.read[a.read_status] || 0) + 1;
+    for (const t of (a.tags || [])) counters.tags[t] = (counters.tags[t] || 0) + 1;
+  }
+  const blocks = [
+    ['Decision', counters.decisions],
+    ['Read Status', counters.read],
+    ['Top Tags', Object.fromEntries(Object.entries(counters.tags).sort((a,b)=>b[1]-a[1]).slice(0,8))],
+  ];
+  for (const [title, data] of blocks) {
+    const card = document.createElement('div');
+    card.className = 'metric';
+    card.innerHTML = `<strong>${title}</strong>`;
+    const total = Math.max(1, Object.values(data).reduce((x,y)=>x+y,0));
+    for (const [k,v] of Object.entries(data)) {
+      const bar = document.createElement('div');
+      bar.className = 'bar';
+      bar.innerHTML = `<span>${k} (${v})</span><i style="width:${Math.round((v/total)*100)}%"></i>`;
+      card.appendChild(bar);
+    }
+    root.appendChild(card);
+  }
+}
+
+async function loadLatexFiles() {
+  const rows = await api(`/api/project-files?project=${encodeURIComponent(currentProject())}`);
+  const tree = $('latexFileTree');
+  tree.innerHTML = '';
+  for (const f of rows) tree.appendChild(latexFileTreeNode(f));
+
+  const firstTex = rows.find((r) => r.file_type === 'file' && r.path.endsWith('.tex'));
+  if (!selectedLatexPath() && firstTex) {
+    $('latexCurrentPath').value = firstTex.path;
+    $('latexInput').value = firstTex.content || '';
+  }
+}
+
+async function saveLatexPath() {
+  const path = $('latexPathInput').value.trim();
+  const file_type = $('latexPathType').value;
+  if (!path) throw new Error('path is required');
+  await api('/api/project-files', {
+    method: 'POST',
+    body: JSON.stringify({
+      project: currentProject(),
+      path,
+      file_type,
+      content: file_type === 'file' ? (path.endsWith('.tex') ? $('latexInput').value : '') : '',
+    }),
+  });
+  $('latexPathInput').value = '';
+  await loadLatexFiles();
+}
+
+async function saveCurrentLatexFile() {
+  const path = selectedLatexPath() || $('latexPathInput').value.trim();
+  if (!path) throw new Error('select or provide a file path');
+  await api('/api/project-files', {
+    method: 'POST',
+    body: JSON.stringify({
+      project: currentProject(),
+      path,
+      file_type: 'file',
+      content: $('latexInput').value,
+    }),
+  });
+  $('latexCurrentPath').value = path;
+  await loadLatexFiles();
+}
+
+async function renderLatex() {
+  const source = $('latexInput').value;
+  $('latexPreview').textContent = '';
+
+  const result = await api('/api/latex/render', {
+    method: 'POST',
+    body: JSON.stringify({ latex: source }),
+  });
+  $('latexPdfFrame').src = result.pdf_data || '';
+  $('latexRenderLog').textContent = result.log || '';
+}
+
+async function loadAll() {
+  if (!currentProject()) return;
+  syncExportLinks();
+  await Promise.all([loadDashboard(), loadArticles(), loadCaptures(), loadNotes(), loadChecklist(), loadLatexFiles(), loadPresenterFiles(), loadPresenterNotes()]);
+  await loadAnalysis();
+}
+
+function on(id, event, handler) {
+  const el = $(id);
+  if (el) el.addEventListener(event, handler);
+}
+
+on('createProjectBtn', 'click', () => createProject().then(saveDatabaseSnapshot).catch((e) => alert(e.message)));
+on('refreshBtn', 'click', () => refreshProjects().catch((e) => alert(e.message)));
+on('saveDbBtn', 'click', () => saveDatabaseSnapshot().catch((e) => alert(e.message)));
+on('loadDbBtn', 'click', () => loadDatabaseSnapshot().catch((e) => alert(e.message)));
+on('projectSelect', 'change', () => loadAll().catch((e) => alert(e.message)));
+on('applyFilterBtn', 'click', () => loadArticles().catch((e) => alert(e.message)));
+on('clearArticlesBtn', 'click', () => clearProjectArticles().catch((e) => alert(e.message)));
+on('autoFillArticleBtn', 'click', () => autoFillArticle().catch((e) => alert(e.message)));
+on('addArticleBtn', 'click', () => addArticle().catch((e) => alert(e.message)));
+on('updateArticleBtn', 'click', () => updateArticle().catch((e) => alert(e.message)));
+on('deleteArticleBtn', 'click', () => deleteArticle().catch((e) => alert(e.message)));
+on('analysisArticleSelect', 'change', () => loadAnalysis().catch((e) => alert(e.message)));
+on('uploadArticleDocumentBtn', 'click', () => uploadArticleDocument().catch((e) => alert(e.message)));
+on('saveAnalysisBtn', 'click', () => saveAnalysis().catch((e) => alert(e.message)));
+on('saveArticleFileBtn', 'click', () => saveArticleFile().catch((e) => alert(e.message)));
+on('captureArticleSelect', 'change', () => loadCaptureDocuments().catch((e) => alert(e.message)));
+on('saveCaptureBtn', 'click', () => saveCapture().catch((e) => alert(e.message)));
+on('saveNoteBtn', 'click', () => saveNote().catch((e) => alert(e.message)));
+on('searchNotesBtn', 'click', () => loadNotes().catch((e) => alert(e.message)));
+on('addCheckBtn', 'click', () => addChecklist().catch((e) => alert(e.message)));
+on('saveLatexPathBtn', 'click', () => saveLatexPath().catch((e) => alert(e.message)));
+on('saveLatexFileBtn', 'click', () => saveCurrentLatexFile().catch((e) => alert(e.message)));
+on('renderLatexBtn', 'click', () => renderLatex().catch((e) => { $('latexRenderLog').textContent = e.message; alert(e.message); }));
+on('zoomInBtn', 'click', () => { presenterScale = Math.min(3, presenterScale + 0.1); applyPresenterZoom(); });
+on('zoomOutBtn', 'click', () => { presenterScale = Math.max(0.4, presenterScale - 0.1); applyPresenterZoom(); });
+on('zoomResetBtn', 'click', () => { presenterScale = 1; applyPresenterZoom(); });
+on('savePresenterNoteBtn', 'click', () => savePresenterNote().catch((e) => alert(e.message)));
+on('addArticleByFileBtn', 'click', () => addArticleByFile().catch((e) => alert(e.message)));
+on('presenterBulkAddBtn', 'click', () => addPresenterFilesToSourceArticles().catch((e) => alert(e.message)));
+on('presenterFileSearch', 'input', () => renderPresenterFileTree());
+on('presenterFullViewBtn', 'click', () => togglePresenterFullView());
+on('zoomFitBtn', 'click', () => fitPresenterWidth());
+on('presenterEnableZoom', 'change', () => applyPresenterZoom());
+on('presenterRenderMainBtn', 'click', () => renderPresenterMainTex().catch((e) => alert(e.message)));
+on('presenterOpenMainBtn', 'click', () => openPresenterMainTex().catch((e) => alert(e.message)));
+
+$('presenterPreviewFrameWrap').addEventListener('wheel', (e) => {
+  if (!$('presenterEnableZoom').checked || !e.ctrlKey) return;
+  e.preventDefault();
+  presenterScale = Math.max(0.4, Math.min(3, presenterScale + (e.deltaY < 0 ? 0.1 : -0.1)));
+  applyPresenterZoom();
+}, { passive: false });
+
+document.addEventListener('fullscreenchange', () => {
+  if (!document.fullscreenElement) $('presenterViewerPane').classList.remove('fullscreen');
+});
+
+document.addEventListener('keydown', async (e) => {
+  if (e.key === 'Escape') { $('presenterViewerPane').classList.remove('fullscreen'); if (document.fullscreenElement) await document.exitFullscreen?.().catch(() => {}); }
+  if (e.key === '+' && $('presenterEnableZoom').checked) { presenterScale = Math.min(3, presenterScale + 0.1); applyPresenterZoom(); }
+  if (e.key === '-' && $('presenterEnableZoom').checked) { presenterScale = Math.max(0.4, presenterScale - 0.1); applyPresenterZoom(); }
+});
+
+applyPresenterZoom();
 
 async function renderPresenterMainTex() {
   const result = await api('/api/latex/render', {

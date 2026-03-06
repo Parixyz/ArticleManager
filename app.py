@@ -129,6 +129,10 @@ def ensure_default_project_files(conn: sqlite3.Connection, project_id: int) -> N
     now = utc_now()
     defaults = [
         ("SourceArticles", "directory", ""),
+        ("Articles", "directory", ""),
+        ("Screenshots", "directory", ""),
+        ("Tables", "directory", ""),
+        ("NLP", "directory", ""),
         (".bib", "directory", ""),
         ("main.tex", "file", DEFAULT_MAIN_TEX),
         (".bib/references.bib", "file", ""),
@@ -446,6 +450,12 @@ class AppHandler(SimpleHTTPRequestHandler):
             return self._create_project()
         if p == "/api/articles":
             return self._create_article()
+        if p == "/api/articles/update":
+            return self._update_article()
+        if p == "/api/articles/delete":
+            return self._delete_article()
+        if p == "/api/articles/clear":
+            return self._clear_project_articles()
         if p == "/api/articles/from-file":
             return self._create_article_from_file()
         if p == "/api/analysis":
@@ -676,6 +686,98 @@ class AppHandler(SimpleHTTPRequestHandler):
             )
         self._json_response({"id": article_id, "nlp_cluster": inferred, "keywords": keywords, "duplicate_like": [dict(x) for x in dup]}, 201)
 
+    def _update_article(self):
+        p = self._parse_json()
+        article_id = p.get("article_id")
+        project = p.get("project", "").strip()
+        if not article_id or not project:
+            return self._json_response({"error": "article_id and project required"}, 400)
+        role = p.get("role", "background").strip().lower()
+        evidence = p.get("evidence_strength", "unclear").strip().lower()
+        read_status = p.get("read_status", "unread").strip().lower()
+        decision = p.get("decision_flag", "maybe").strip().lower()
+        if role not in ROLE_VALUES:
+            role = "background"
+        if evidence not in EVIDENCE_VALUES:
+            evidence = "unclear"
+        if read_status not in READ_VALUES:
+            read_status = "unread"
+        if decision not in DECISION_VALUES:
+            decision = "maybe"
+        tags = [t.strip().lower() for t in p.get("tags", []) if t.strip()]
+        method_tags = [t.strip() for t in p.get("method_tags", []) if t.strip()]
+        notes = p.get("notes", "").strip()
+        title = p.get("title", "").strip()
+        if not title:
+            return self._json_response({"error": "title required"}, 400)
+        with db_conn() as conn:
+            try:
+                pid = get_project_id(conn, project)
+            except KeyError:
+                return self._json_response({"error": "project not found"}, 404)
+            existing = conn.execute("SELECT id FROM articles WHERE id=? AND project_id=?", (article_id, pid)).fetchone()
+            if not existing:
+                return self._json_response({"error": "article not found"}, 404)
+            inferred = choose_cluster(f"{title}\n{notes}\n{p.get('research_task', '')}")
+            keywords = top_keywords(f"{title}\n{notes}")
+            conn.execute(
+                """UPDATE articles
+                SET title=?, normalized_title=?, source_url=?, category=?, role=?, research_task=?, method_tags=?,
+                    evidence_strength=?, relevance_score=?, read_status=?, decision_flag=?, authors=?, venue=?, year=?,
+                    notes=?, nlp_cluster=?, keywords=?, tags=?
+                WHERE id=? AND project_id=?""",
+                (
+                    title,
+                    normalize_title(title),
+                    p.get("source_url", "").strip(),
+                    p.get("category", "").strip() or "general",
+                    role,
+                    p.get("research_task", "").strip(),
+                    json.dumps(method_tags),
+                    evidence,
+                    max(0, min(100, int(p.get("relevance_score", 50)))),
+                    read_status,
+                    decision,
+                    p.get("authors", "").strip(),
+                    p.get("venue", "").strip(),
+                    p.get("year", "").strip(),
+                    notes,
+                    inferred,
+                    json.dumps(keywords),
+                    json.dumps(tags),
+                    article_id,
+                    pid,
+                ),
+            )
+        self._json_response({"status": "updated"}, 200)
+
+    def _delete_article(self):
+        p = self._parse_json()
+        article_id = p.get("article_id")
+        project = p.get("project", "").strip()
+        if not article_id or not project:
+            return self._json_response({"error": "article_id and project required"}, 400)
+        with db_conn() as conn:
+            try:
+                pid = get_project_id(conn, project)
+            except KeyError:
+                return self._json_response({"error": "project not found"}, 404)
+            conn.execute("DELETE FROM articles WHERE id=? AND project_id=?", (article_id, pid))
+        self._json_response({"status": "deleted"}, 200)
+
+    def _clear_project_articles(self):
+        p = self._parse_json()
+        project = p.get("project", "").strip()
+        if not project:
+            return self._json_response({"error": "project required"}, 400)
+        with db_conn() as conn:
+            try:
+                pid = get_project_id(conn, project)
+            except KeyError:
+                return self._json_response({"error": "project not found"}, 404)
+            conn.execute("DELETE FROM articles WHERE project_id=?", (pid,))
+        self._json_response({"status": "cleared"}, 200)
+
     def _get_analysis(self, query: str):
         aid = parse_qs(query).get("article_id", [""])[0]
         if not aid:
@@ -827,7 +929,40 @@ class AppHandler(SimpleHTTPRequestHandler):
                     utc_now(),
                 ),
             )
-        self._json_response({"capture_id": cur.lastrowid}, 201)
+            capture_id = int(cur.lastrowid)
+            now = utc_now()
+            conn.execute(
+                """INSERT INTO project_files(project_id,path,file_type,content,linked_capture_id,created_at,updated_at)
+                VALUES(?,?,?,?,?,?,?)
+                ON CONFLICT(project_id,path)
+                DO UPDATE SET file_type=excluded.file_type,updated_at=excluded.updated_at""",
+                (pid, "Screenshots", "directory", "", None, now, now),
+            )
+            metadata = (
+                f"capture_id: {capture_id}\n"
+                f"source_url: {p.get('page_url', '')}\n"
+                f"source_title: {p.get('page_title', '')}\n"
+                f"article_id: {p.get('article_id') or ''}\n"
+                f"document_id: {p.get('document_id') or ''}\n"
+                f"selected_text:\n{p.get('selected_text', '')}\n\n"
+                f"comment:\n{p.get('comment', '')}\n"
+            )
+            conn.execute(
+                """INSERT INTO project_files(project_id,path,file_type,content,linked_capture_id,created_at,updated_at)
+                VALUES(?,?,?,?,?,?,?)
+                ON CONFLICT(project_id,path)
+                DO UPDATE SET content=excluded.content,linked_capture_id=excluded.linked_capture_id,updated_at=excluded.updated_at""",
+                (pid, f"Screenshots/capture_{capture_id}.txt", "file", metadata, capture_id, now, now),
+            )
+            if ss:
+                conn.execute(
+                    """INSERT INTO project_files(project_id,path,file_type,content,linked_capture_id,created_at,updated_at)
+                    VALUES(?,?,?,?,?,?,?)
+                    ON CONFLICT(project_id,path)
+                    DO UPDATE SET content=excluded.content,linked_capture_id=excluded.linked_capture_id,updated_at=excluded.updated_at""",
+                    (pid, f"Screenshots/capture_{capture_id}.png", "file", ss, capture_id, now, now),
+                )
+        self._json_response({"capture_id": capture_id}, 201)
 
     def _get_captures(self, query: str):
         project = parse_qs(query).get("project", [""])[0]
