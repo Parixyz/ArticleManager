@@ -97,6 +97,16 @@
         <textarea id="fTables" placeholder="extracted tables"></textarea>
       </div>
       <button id="saveAnalysisBtn">Save Analysis</button>
+
+      <h3>Article File (Full Document DB Fields)</h3>
+      <div class="row wrap two-col">
+        <input id="afName" placeholder="file name (e.g., manuscript.pdf)" />
+        <textarea id="afFullText" placeholder="full extracted text"></textarea>
+        <textarea id="afSections" placeholder="section segmentation"></textarea>
+        <textarea id="afReferences" placeholder="references extraction"></textarea>
+        <textarea id="afMetadata" placeholder="metadata extraction"></textarea>
+      </div>
+      <button id="saveArticleFileBtn">Save Article File</button>
     </section>
 
     <section id="capturesTab" class="panel card">
@@ -147,6 +157,7 @@
 
     <section id="latexTab" class="panel card">
       <h2>LaTeX Render & Preview</h2>
+      <p class="hint">Tip: full documents are supported. If a <code>\documentclass ... \begin{document} ... \end{document}</code> wrapper is present, only the document body is rendered for preview.</p>
       <textarea id="latexInput" rows="8">\n\n\\[ E = mc^2 \\]\n\n$\\alpha + \\beta$</textarea>
       <button id="renderLatexBtn">Render</button>
       <div id="latexPreview" class="latex-preview"></div>
