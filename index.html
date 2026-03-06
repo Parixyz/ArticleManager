@@ -1,0 +1,167 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>ArticleManager Presentor</title>
+  <link rel="stylesheet" href="/static/styles.css" />
+  <script>
+    window.MathJax = { tex: { inlineMath: [['$', '$'], ['\\(', '\\)']] } };
+  </script>
+  <script src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js" defer></script>
+</head>
+<body>
+  <main class="container">
+    <header class="card">
+      <h1>ArticleManager Presentor</h1>
+      <p>Survey-focused workspace: understand papers, compare them, capture evidence, take notes side-by-side, and export outputs.</p>
+    </header>
+
+    <section class="card row wrap">
+      <input id="projectName" placeholder="Project name" />
+      <input id="projectDescription" placeholder="Description" />
+      <input id="projectTaxonomy" placeholder="Project taxonomy (comma separated)" />
+      <input id="projectOutline" placeholder="Writing outline (Section2->papers...)" />
+      <button id="createProjectBtn">Create Project</button>
+      <select id="projectSelect"></select>
+      <button id="refreshBtn">Refresh</button>
+      <a id="exportCsvLink" href="#">Export CSV</a>
+      <a id="exportBibLink" href="#">Export .bib</a>
+    </section>
+
+    <section class="tabs">
+      <button class="tab active" data-target="presentorTab">Presentor</button>
+      <button class="tab" data-target="managementTab">Management</button>
+      <button class="tab" data-target="analysisTab">Structured Analysis</button>
+      <button class="tab" data-target="capturesTab">Screenshots & Evidence</button>
+      <button class="tab" data-target="notesTab">Noter (Side-by-side)</button>
+      <button class="tab" data-target="tableTab">Table Maker</button>
+      <button class="tab" data-target="latexTab">LaTeX Render</button>
+      <button class="tab" data-target="checklistTab">Checklist</button>
+    </section>
+
+    <section id="presentorTab" class="panel active card">
+      <h2>Project Intelligence Dashboard</h2>
+      <div id="dashboardGrid" class="grid"></div>
+      <h3>Quick search/filter</h3>
+      <div class="row wrap">
+        <input id="searchQuery" placeholder="Search title/notes/authors/venue" />
+        <select id="filterDecision"><option value="">Any decision</option><option>include</option><option>maybe</option><option>exclude</option></select>
+        <select id="filterRead"><option value="">Any read status</option><option>unread</option><option>skimmed</option><option>read</option><option>deeply analyzed</option></select>
+        <button id="applyFilterBtn">Apply Filter</button>
+      </div>
+      <ul id="articleList"></ul>
+    </section>
+
+    <section id="managementTab" class="panel card">
+      <h2>Article Decision System</h2>
+      <div class="row wrap">
+        <input id="aTitle" placeholder="Title" />
+        <input id="aSource" placeholder="Source URL" />
+        <input id="aCategory" placeholder="Category/topic" />
+        <input id="aTask" placeholder="Research task (e.g., handover, FL optimization)" />
+        <input id="aMethodTags" placeholder="Method tags (RL,FL,GNN,...)" />
+        <input id="aAuthors" placeholder="Authors" />
+        <input id="aVenue" placeholder="Venue" />
+        <input id="aYear" placeholder="Year" />
+        <select id="aRole"><option>background</option><option>related work</option><option>benchmark</option><option>method</option><option>dataset</option><option>survey</option><option>theory</option><option>application</option></select>
+        <select id="aEvidence"><option>strong</option><option>moderate</option><option>weak</option><option selected>unclear</option></select>
+        <select id="aRead"><option selected>unread</option><option>skimmed</option><option>read</option><option>deeply analyzed</option></select>
+        <select id="aDecision"><option>include</option><option selected>maybe</option><option>exclude</option></select>
+        <input id="aRelevance" type="number" min="0" max="100" value="50" placeholder="Relevance 0-100" />
+      </div>
+      <textarea id="aNotes" rows="5" placeholder="Notes / abstract for NLP clustering"></textarea>
+      <button id="addArticleBtn">Add Article</button>
+      <div id="addArticleMsg" class="hint"></div>
+    </section>
+
+    <section id="analysisTab" class="panel card">
+      <h2>Structured Paper Breakdown</h2>
+      <div class="row wrap">
+        <select id="analysisArticleSelect"></select>
+      </div>
+      <div class="row wrap two-col">
+        <textarea id="fProblem" placeholder="problem statement"></textarea>
+        <textarea id="fSetting" placeholder="setting/domain"></textarea>
+        <textarea id="fDataset" placeholder="dataset/environment"></textarea>
+        <textarea id="fModel" placeholder="model/algorithm"></textarea>
+        <textarea id="fBaselines" placeholder="baseline methods"></textarea>
+        <textarea id="fMetrics" placeholder="evaluation metrics"></textarea>
+        <textarea id="fFindings" placeholder="key findings"></textarea>
+        <textarea id="fLimitations" placeholder="limitations"></textarea>
+        <textarea id="fAssumptions" placeholder="assumptions"></textarea>
+        <textarea id="fFuture" placeholder="future work"></textarea>
+        <textarea id="fCommentary" placeholder="your commentary"></textarea>
+        <textarea id="fFigures" placeholder="extracted figures"></textarea>
+        <textarea id="fEquations" placeholder="extracted equations"></textarea>
+        <textarea id="fTables" placeholder="extracted tables"></textarea>
+      </div>
+      <button id="saveAnalysisBtn">Save Analysis</button>
+    </section>
+
+    <section id="capturesTab" class="panel card">
+      <h2>Screenshots & Capture Provenance</h2>
+      <div class="row wrap">
+        <select id="captureArticleSelect"></select>
+        <input type="file" id="captureFile" accept="image/*" />
+        <input id="captureUrl" placeholder="source URL" />
+        <input id="captureTitle" placeholder="page title" />
+        <input id="captureTag" placeholder="tag/category" />
+      </div>
+      <textarea id="captureText" rows="3" placeholder="selected text / highlight"></textarea>
+      <textarea id="captureComment" rows="2" placeholder="manual comment"></textarea>
+      <button id="saveCaptureBtn">Save Capture</button>
+      <div id="captureGrid" class="grid"></div>
+    </section>
+
+    <section id="notesTab" class="panel card">
+      <h2>Noter (Side-by-side Notes)</h2>
+      <div class="split">
+        <div>
+          <select id="noteArticleSelect"></select>
+          <select id="noteType"><option>idea</option><option>critique</option><option>quote</option><option>limitation</option><option>method</option><option>result</option></select>
+          <input id="noteAnchor" placeholder="anchor: page/section/figure" />
+          <label><input type="checkbox" id="notePinned" /> pinned</label>
+          <textarea id="noteContent" rows="8" placeholder="Write note..."></textarea>
+          <button id="saveNoteBtn">Save Note</button>
+        </div>
+        <div>
+          <input id="noteSearch" placeholder="search notes" />
+          <button id="searchNotesBtn">Search</button>
+          <ul id="notesList"></ul>
+        </div>
+      </div>
+    </section>
+
+    <section id="tableTab" class="panel card">
+      <h2>Comparison Matrix Builder</h2>
+      <p>Select article IDs separated by comma (example: 1,2,3)</p>
+      <input id="comparisonIds" placeholder="Article IDs" />
+      <button id="buildTableBtn">Build Comparison</button>
+      <pre id="comparisonPreview"></pre>
+      <h3>LaTeX table</h3>
+      <pre id="latexTableOut"></pre>
+      <h3>CSV</h3>
+      <pre id="csvOut"></pre>
+    </section>
+
+    <section id="latexTab" class="panel card">
+      <h2>LaTeX Render & Preview</h2>
+      <textarea id="latexInput" rows="8">\n\n\\[ E = mc^2 \\]\n\n$\\alpha + \\beta$</textarea>
+      <button id="renderLatexBtn">Render</button>
+      <div id="latexPreview" class="latex-preview"></div>
+    </section>
+
+    <section id="checklistTab" class="panel card">
+      <h2>Survey Workflow Checklist</h2>
+      <div class="row wrap">
+        <input id="checkItem" placeholder="Add checklist item" />
+        <button id="addCheckBtn">Add</button>
+      </div>
+      <ul id="checkList"></ul>
+    </section>
+  </main>
+
+  <script src="/static/app.js"></script>
+</body>
+</html>
