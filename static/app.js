@@ -700,15 +700,19 @@ async function loadPresenterNotes() {
 }
 
 async function addArticleByFile() {
-  const file = $('managementArticleFile').files[0];
-  if (!file) throw new Error('select a file first');
-  const file_data = await fileToDataUrl(file);
-  const out = await api('/api/articles/from-file', {
-    method: 'POST',
-    body: JSON.stringify({ project: currentProject(), file_name: file.name, file_data }),
-  });
+  const files = Array.from($('managementArticleFile').files || []);
+  if (!files.length) throw new Error('select at least one file first');
+  const clusters = [];
+  for (const file of files) {
+    const file_data = await fileToDataUrl(file);
+    const out = await api('/api/articles/from-file', {
+      method: 'POST',
+      body: JSON.stringify({ project: currentProject(), file_name: file.name, file_data }),
+    });
+    clusters.push(`${file.name}: ${out.nlp_cluster}`);
+  }
   $('managementArticleFile').value = '';
-  $('addArticleMsg').textContent = `Added from file. Cluster: ${out.nlp_cluster}; Keywords: ${(out.keywords || []).join(', ')}`;
+  $('addArticleMsg').textContent = `Added ${files.length} article file(s). ${clusters.slice(0, 3).join(' | ')}`;
   await loadAll();
 }
 
@@ -846,211 +850,6 @@ on('zoomFitBtn', 'click', () => fitPresenterWidth());
 on('presenterEnableZoom', 'change', () => applyPresenterZoom());
 on('presenterRenderMainBtn', 'click', () => renderPresenterMainTex().catch((e) => alert(e.message)));
 on('presenterOpenMainBtn', 'click', () => openPresenterMainTex().catch((e) => alert(e.message)));
-
-$('presenterPreviewFrameWrap').addEventListener('wheel', (e) => {
-  if (!$('presenterEnableZoom').checked || !e.ctrlKey) return;
-  e.preventDefault();
-  presenterScale = Math.max(0.4, Math.min(3, presenterScale + (e.deltaY < 0 ? 0.1 : -0.1)));
-  applyPresenterZoom();
-}, { passive: false });
-
-document.addEventListener('fullscreenchange', () => {
-  if (!document.fullscreenElement) $('presenterViewerPane').classList.remove('fullscreen');
-});
-
-document.addEventListener('keydown', async (e) => {
-  if (e.key === 'Escape') { $('presenterViewerPane').classList.remove('fullscreen'); if (document.fullscreenElement) await document.exitFullscreen?.().catch(() => {}); }
-  if (e.key === '+' && $('presenterEnableZoom').checked) { presenterScale = Math.min(3, presenterScale + 0.1); applyPresenterZoom(); }
-  if (e.key === '-' && $('presenterEnableZoom').checked) { presenterScale = Math.max(0.4, presenterScale - 0.1); applyPresenterZoom(); }
-});
-
-applyPresenterZoom();
-
-async function renderPresenterMainTex() {
-  const result = await api('/api/latex/render', {
-    method: 'POST',
-    body: JSON.stringify({ project: currentProject(), main_tex_path: 'main.tex' }),
-  });
-  presenterSelected.path = 'main.tex';
-  $('presenterCurrentPath').textContent = 'main.tex (rendered)';
-  $('presenterTextPreview').classList.add('hidden');
-  $('presenterPdfFrame').classList.remove('hidden');
-  $('presenterPdfFrame').src = result.pdf_data || '';
-}
-
-async function savePresenterNote() {
-  await api('/api/notes', {
-    method: 'POST',
-    body: JSON.stringify({
-      project: currentProject(),
-      article_id: presenterSelected.articleId,
-      note_type: $('presenterNoteType').value,
-      content: $('presenterNoteContent').value,
-      source_anchor: `${$('presenterNoteAnchor').value} [${presenterSelected.path || 'general'}]`,
-      is_pinned: false,
-    }),
-  });
-  $('presenterNoteContent').value = '';
-  await loadPresenterNotes();
-}
-
-async function loadPresenterNotes() {
-  const rows = await api(`/api/notes?project=${encodeURIComponent(currentProject())}`);
-  const ul = $('presenterNotesList');
-  ul.innerHTML = '';
-  const filtered = rows.filter((n) => {
-    if (presenterSelected.articleId && n.article_id === presenterSelected.articleId) return true;
-    if (presenterSelected.path && (n.source_anchor || '').includes(`[${presenterSelected.path}]`)) return true;
-    return !presenterSelected.path;
-  });
-  for (const n of filtered) {
-    const li = document.createElement('li');
-    li.innerHTML = `<strong>${n.note_type}</strong><div>${n.content}</div><small>${n.source_anchor || '-'}</small>`;
-    ul.appendChild(li);
-  }
-}
-
-async function addArticleByFile() {
-  const file = $('managementArticleFile').files[0];
-  if (!file) throw new Error('select a file first');
-  const file_data = await fileToDataUrl(file);
-  const out = await api('/api/articles/from-file', {
-    method: 'POST',
-    body: JSON.stringify({ project: currentProject(), file_name: file.name, file_data }),
-  });
-  $('managementArticleFile').value = '';
-  $('addArticleMsg').textContent = `Added from file. Cluster: ${out.nlp_cluster}; Keywords: ${(out.keywords || []).join(', ')}`;
-  await loadAll();
-}
-
-function renderManagementPlots(rows) {
-  const root = $('managementPlots');
-  root.innerHTML = '';
-  const counters = { tags: {}, decisions: {}, read: {} };
-  for (const a of rows) {
-    counters.decisions[a.decision_flag] = (counters.decisions[a.decision_flag] || 0) + 1;
-    counters.read[a.read_status] = (counters.read[a.read_status] || 0) + 1;
-    for (const t of (a.tags || [])) counters.tags[t] = (counters.tags[t] || 0) + 1;
-  }
-  const blocks = [
-    ['Decision', counters.decisions],
-    ['Read Status', counters.read],
-    ['Top Tags', Object.fromEntries(Object.entries(counters.tags).sort((a,b)=>b[1]-a[1]).slice(0,8))],
-  ];
-  for (const [title, data] of blocks) {
-    const card = document.createElement('div');
-    card.className = 'metric';
-    card.innerHTML = `<strong>${title}</strong>`;
-    const total = Math.max(1, Object.values(data).reduce((x,y)=>x+y,0));
-    for (const [k,v] of Object.entries(data)) {
-      const bar = document.createElement('div');
-      bar.className = 'bar';
-      bar.innerHTML = `<span>${k} (${v})</span><i style="width:${Math.round((v/total)*100)}%"></i>`;
-      card.appendChild(bar);
-    }
-    root.appendChild(card);
-  }
-}
-
-async function loadLatexFiles() {
-  const rows = await api(`/api/project-files?project=${encodeURIComponent(currentProject())}`);
-  const tree = $('latexFileTree');
-  tree.innerHTML = '';
-  for (const f of rows) tree.appendChild(latexFileTreeNode(f));
-
-  const firstTex = rows.find((r) => r.file_type === 'file' && r.path.endsWith('.tex'));
-  if (!selectedLatexPath() && firstTex) {
-    $('latexCurrentPath').value = firstTex.path;
-    $('latexInput').value = firstTex.content || '';
-  }
-}
-
-async function saveLatexPath() {
-  const path = $('latexPathInput').value.trim();
-  const file_type = $('latexPathType').value;
-  if (!path) throw new Error('path is required');
-  await api('/api/project-files', {
-    method: 'POST',
-    body: JSON.stringify({
-      project: currentProject(),
-      path,
-      file_type,
-      content: file_type === 'file' ? (path.endsWith('.tex') ? $('latexInput').value : '') : '',
-    }),
-  });
-  $('latexPathInput').value = '';
-  await loadLatexFiles();
-}
-
-async function saveCurrentLatexFile() {
-  const path = selectedLatexPath() || $('latexPathInput').value.trim();
-  if (!path) throw new Error('select or provide a file path');
-  await api('/api/project-files', {
-    method: 'POST',
-    body: JSON.stringify({
-      project: currentProject(),
-      path,
-      file_type: 'file',
-      content: $('latexInput').value,
-    }),
-  });
-  $('latexCurrentPath').value = path;
-  await loadLatexFiles();
-}
-
-async function renderLatex() {
-  const source = $('latexInput').value;
-  $('latexPreview').textContent = '';
-
-  const result = await api('/api/latex/render', {
-    method: 'POST',
-    body: JSON.stringify({ latex: source }),
-  });
-  $('latexPdfFrame').src = result.pdf_data || '';
-  $('latexRenderLog').textContent = result.log || '';
-}
-
-async function loadAll() {
-  if (!currentProject()) return;
-  syncExportLinks();
-  await Promise.all([loadDashboard(), loadArticles(), loadCaptures(), loadNotes(), loadChecklist(), loadLatexFiles(), loadPresenterFiles(), loadPresenterNotes()]);
-  await loadAnalysis();
-}
-
-$('createProjectBtn').addEventListener('click', () => createProject().then(saveDatabaseSnapshot).catch((e) => alert(e.message)));
-$('refreshBtn').addEventListener('click', () => refreshProjects().catch((e) => alert(e.message)));
-$('saveDbBtn').addEventListener('click', () => saveDatabaseSnapshot().catch((e) => alert(e.message)));
-$('loadDbBtn').addEventListener('click', () => loadDatabaseSnapshot().catch((e) => alert(e.message)));
-$('projectSelect').addEventListener('change', () => loadAll().catch((e) => alert(e.message)));
-$('applyFilterBtn').addEventListener('click', () => loadArticles().catch((e) => alert(e.message)));
-$('autoFillArticleBtn').addEventListener('click', () => autoFillArticle().catch((e) => alert(e.message)));
-$('addArticleBtn').addEventListener('click', () => addArticle().catch((e) => alert(e.message)));
-$('analysisArticleSelect').addEventListener('change', () => loadAnalysis().catch((e) => alert(e.message)));
-$('uploadArticleDocumentBtn').addEventListener('click', () => uploadArticleDocument().catch((e) => alert(e.message)));
-$('groupBy').addEventListener('change', () => loadArticles().catch((e) => alert(e.message)));
-$('saveAnalysisBtn').addEventListener('click', () => saveAnalysis().catch((e) => alert(e.message)));
-$('saveArticleFileBtn').addEventListener('click', () => saveArticleFile().catch((e) => alert(e.message)));
-$('captureArticleSelect').addEventListener('change', () => loadCaptureDocuments().catch((e) => alert(e.message)));
-$('saveCaptureBtn').addEventListener('click', () => saveCapture().catch((e) => alert(e.message)));
-$('saveNoteBtn').addEventListener('click', () => saveNote().catch((e) => alert(e.message)));
-$('searchNotesBtn').addEventListener('click', () => loadNotes().catch((e) => alert(e.message)));
-$('buildTableBtn').addEventListener('click', () => buildComparison().catch((e) => alert(e.message)));
-$('addCheckBtn').addEventListener('click', () => addChecklist().catch((e) => alert(e.message)));
-$('saveLatexPathBtn').addEventListener('click', () => saveLatexPath().catch((e) => alert(e.message)));
-$('saveLatexFileBtn').addEventListener('click', () => saveCurrentLatexFile().catch((e) => alert(e.message)));
-$('renderLatexBtn').addEventListener('click', () => renderLatex().catch((e) => { $('latexRenderLog').textContent = e.message; alert(e.message); }));
-$('zoomInBtn').addEventListener('click', () => { presenterScale = Math.min(3, presenterScale + 0.1); applyPresenterZoom(); });
-$('zoomOutBtn').addEventListener('click', () => { presenterScale = Math.max(0.4, presenterScale - 0.1); applyPresenterZoom(); });
-$('zoomResetBtn').addEventListener('click', () => { presenterScale = 1; applyPresenterZoom(); });
-$('savePresenterNoteBtn').addEventListener('click', () => savePresenterNote().catch((e) => alert(e.message)));
-$('addArticleByFileBtn').addEventListener('click', () => addArticleByFile().catch((e) => alert(e.message)));
-$('presenterBulkAddBtn').addEventListener('click', () => addPresenterFilesToSourceArticles().catch((e) => alert(e.message)));
-$('presenterFileSearch').addEventListener('input', () => renderPresenterFileTree());
-$('presenterFullViewBtn').addEventListener('click', () => togglePresenterFullView());
-$('zoomFitBtn').addEventListener('click', () => fitPresenterWidth());
-$('presenterEnableZoom').addEventListener('change', () => applyPresenterZoom());
-$('presenterRenderMainBtn').addEventListener('click', () => renderPresenterMainTex().catch((e) => alert(e.message)));
-$('presenterOpenMainBtn').addEventListener('click', () => openPresenterMainTex().catch((e) => alert(e.message)));
 
 $('presenterPreviewFrameWrap').addEventListener('wheel', (e) => {
   if (!$('presenterEnableZoom').checked || !e.ctrlKey) return;

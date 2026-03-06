@@ -77,28 +77,76 @@ def tokenize(text: str) -> list[str]:
     return [w for w in words if w not in stop]
 
 
+def tokenize_with_stems(text: str) -> tuple[list[str], list[str]]:
+    tokens = tokenize(text)
+    stems: list[str] = []
+    for token in tokens:
+        stem = token
+        for suffix in ("ization", "ations", "ation", "ments", "ment", "ingly", "edly", "ing", "ers", "ies", "ied", "ed", "es", "s"):
+            if stem.endswith(suffix) and len(stem) > len(suffix) + 2:
+                stem = stem[: -len(suffix)]
+                if suffix in {"ies", "ied"}:
+                    stem += "y"
+                break
+        stems.append(stem)
+    return tokens, stems
+
+
+def top_keyphrases(text: str, limit: int = 5) -> list[str]:
+    tokens, stems = tokenize_with_stems(text)
+    if not tokens:
+        return []
+    phrases: dict[str, float] = {}
+    window = min(4, len(tokens))
+    for size in (2, 3):
+        if size > window:
+            continue
+        for i in range(len(tokens) - size + 1):
+            phrase_tokens = tokens[i:i + size]
+            phrase = " ".join(phrase_tokens)
+            rarity = sum(1.2 if len(stems[i + j]) > 7 else 1.0 for j in range(size))
+            phrases[phrase] = phrases.get(phrase, 0.0) + rarity
+    ranked = sorted(phrases.items(), key=lambda kv: (-kv[1], kv[0]))
+    return [p for p, _ in ranked[:limit]]
+
+
 def top_keywords(text: str, limit: int = 6) -> list[str]:
-    freq: dict[str, int] = {}
-    for t in tokenize(text):
-        freq[t] = freq.get(t, 0) + 1
-    return [k for k, _ in sorted(freq.items(), key=lambda kv: (-kv[1], kv[0]))[:limit]]
+    tokens, stems = tokenize_with_stems(text)
+    stem_freq: dict[str, int] = {}
+    stem_repr: dict[str, str] = {}
+    for token, stem in zip(tokens, stems):
+        stem_freq[stem] = stem_freq.get(stem, 0) + 1
+        preferred = stem_repr.get(stem)
+        if preferred is None or len(token) > len(preferred):
+            stem_repr[stem] = token
+    ranked = sorted(stem_freq.items(), key=lambda kv: (-kv[1], kv[0]))
+    return [stem_repr[s] for s, _ in ranked[:limit]]
 
 
 def choose_cluster(text: str) -> str:
-    keywords = top_keywords(text, 8)
+    keywords = top_keywords(text, 10)
+    keyphrases = top_keyphrases(text, 8)
     if not keywords:
         return "general"
+    signal_terms = keywords + [p.replace(" ", "") for p in keyphrases]
     buckets = {
-        "rl": {"reinforcement", "policy", "agent", "reward", "qlearning"},
-        "fl": {"federated", "client", "aggregation", "noniid", "privacy"},
-        "vision": {"image", "vision", "detection", "segmentation", "pixel", "video"},
-        "nlp": {"language", "llm", "prompt", "transformer", "token", "text", "embedding"},
-        "networking": {"handover", "traffic", "steering", "mobility", "latency", "wireless"},
-        "optimization": {"optimization", "convex", "objective", "gradient", "heuristic"},
+        "rl": {"reinforcement", "policy", "agent", "reward", "qlearn", "actorcritic", "markovdecision"},
+        "fl": {"federated", "client", "aggregation", "noniid", "privacy", "federatedlearn", "splitlearn"},
+        "vision": {"image", "vision", "detection", "segmentation", "pixel", "video", "multimodal", "objectdetect"},
+        "nlp": {"language", "llm", "prompt", "transformer", "token", "text", "embedding", "retrievalaugmented", "qa"},
+        "networking": {"handover", "traffic", "steering", "mobility", "latency", "wireless", "5g", "edge"},
+        "optimization": {"optimization", "convex", "objective", "gradient", "heuristic", "lagrangian", "bayesianopt"},
     }
+    scored: dict[str, int] = {name: 0 for name in buckets}
     for name, vocab in buckets.items():
-        if any(k in vocab for k in keywords):
-            return name
+        for term in signal_terms:
+            if term in vocab:
+                scored[name] += 2
+            elif any(term.startswith(v[:5]) for v in vocab if len(v) > 5):
+                scored[name] += 1
+    best = max(scored.items(), key=lambda kv: kv[1])
+    if best[1] > 0:
+        return best[0]
     return keywords[0]
 
 
