@@ -1,0 +1,75 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Article Manager Pro</title>
+  <link rel="stylesheet" href="/static/styles.css" />
+</head>
+<body>
+  <main class="container">
+    <header>
+      <h1>ArticleManager Pro</h1>
+      <p>Database-backed LaTeX research workspace with project folders, NLP clustering, BibTeX, previews, and extension-ready capture.</p>
+    </header>
+
+    <section class="card row wrap">
+      <input id="projectName" placeholder="Project name" />
+      <input id="projectDescription" placeholder="Project description" />
+      <button id="createProjectBtn">Create Project</button>
+      <select id="projectSelect"></select>
+      <button id="refreshBtn">Refresh</button>
+    </section>
+
+    <section class="tabs">
+      <button class="tab active" data-target="articlesTab">Articles</button>
+      <button class="tab" data-target="bibTab">BibTeX</button>
+      <button class="tab" data-target="capturesTab">Captures & Preview</button>
+      <button class="tab" data-target="extensionTab">Extension API</button>
+    </section>
+
+    <section id="articlesTab" class="panel active card">
+      <h2>Add / Cluster Articles</h2>
+      <div class="row wrap">
+        <input id="articleTitle" placeholder="Article title" />
+        <input id="articleCategory" placeholder="Manual category (optional)" />
+        <input id="articleSource" placeholder="Source URL" />
+      </div>
+      <textarea id="articleNotes" rows="5" placeholder="Paste abstract / notes to let NLP infer cluster keywords"></textarea>
+      <button id="addArticleBtn">Add Article</button>
+      <div id="clusterHint" class="hint"></div>
+      <ul id="articlesList"></ul>
+    </section>
+
+    <section id="bibTab" class="panel card">
+      <h2>BibTeX Manager</h2>
+      <div class="row wrap">
+        <input id="bibKey" placeholder="bib key (e.g., vaswani2017attention)" />
+      </div>
+      <textarea id="bibContent" rows="8" placeholder="@article{...}"></textarea>
+      <button id="saveBibBtn">Save Bib Entry</button>
+      <ul id="bibList"></ul>
+    </section>
+
+    <section id="capturesTab" class="panel card">
+      <h2>Captures, Highlight Text, Screenshot Preview</h2>
+      <p>For browser extension: send selected text or screenshot data URL to <code>POST /api/extension/capture</code>.</p>
+      <div class="row wrap">
+        <input type="file" id="screenshotFile" accept="image/*" />
+        <input id="captureUrl" placeholder="Page URL (optional)" />
+        <button id="uploadCaptureBtn">Upload Screenshot Capture</button>
+      </div>
+      <textarea id="selectedText" rows="4" placeholder="Selected / highlighted text"></textarea>
+      <button id="saveTextCaptureBtn">Save Text Capture</button>
+      <div class="grid" id="capturesGrid"></div>
+    </section>
+
+    <section id="extensionTab" class="panel card">
+      <h2>Extension Integration Snippet</h2>
+      <pre id="extensionSnippet"></pre>
+    </section>
+  </main>
+
+  <script src="/static/app.js"></script>
+</body>
+</html>
