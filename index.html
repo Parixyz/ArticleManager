@@ -48,8 +48,15 @@
         <input id="searchQuery" placeholder="Search title/notes/authors/venue" />
         <select id="filterDecision"><option value="">Any decision</option><option>include</option><option>maybe</option><option>exclude</option></select>
         <select id="filterRead"><option value="">Any read status</option><option>unread</option><option>skimmed</option><option>read</option><option>deeply analyzed</option></select>
+        <input id="filterCategory" placeholder="Category" />
+        <input id="filterCluster" placeholder="Cluster" />
+        <input id="filterTag" placeholder="Tag" />
         <button id="applyFilterBtn">Apply Filter</button>
       </div>
+      <div class="row wrap">
+        <select id="groupBy"><option value="none">No Group</option><option value="category">Group by Category</option><option value="cluster">Group by Cluster</option></select>
+      </div>
+      <div id="articleGroups"></div>
       <ul id="articleList"></ul>
     </section>
 
@@ -69,8 +76,10 @@
         <select id="aRead"><option selected>unread</option><option>skimmed</option><option>read</option><option>deeply analyzed</option></select>
         <select id="aDecision"><option>include</option><option selected>maybe</option><option>exclude</option></select>
         <input id="aRelevance" type="number" min="0" max="100" value="50" placeholder="Relevance 0-100" />
+        <input id="aTags" placeholder="Tags (comma separated)" />
       </div>
       <textarea id="aNotes" rows="5" placeholder="Notes / abstract for NLP clustering"></textarea>
+      <button id="autoFillArticleBtn">Auto Fill Fields</button>
       <button id="addArticleBtn">Add Article</button>
       <div id="addArticleMsg" class="hint"></div>
     </section>
@@ -107,6 +116,12 @@
         <textarea id="afMetadata" placeholder="metadata extraction"></textarea>
       </div>
       <button id="saveArticleFileBtn">Save Article File</button>
+      <h3>Article Attachments</h3>
+      <div class="row wrap">
+        <input type="file" id="articleDocumentFile" />
+        <button id="uploadArticleDocumentBtn">Upload Attachment</button>
+      </div>
+      <ul id="articleDocumentList"></ul>
     </section>
 
     <section id="capturesTab" class="panel card">
@@ -117,10 +132,13 @@
         <input id="captureUrl" placeholder="source URL" />
         <input id="captureTitle" placeholder="page title" />
         <input id="captureTag" placeholder="tag/category" />
+        <select id="captureDocumentSelect"></select>
       </div>
       <textarea id="captureText" rows="3" placeholder="selected text / highlight"></textarea>
       <textarea id="captureComment" rows="2" placeholder="manual comment"></textarea>
       <button id="saveCaptureBtn">Save Capture</button>
+      <h3>Screenshot Gallery</h3>
+      <div id="captureGallery" class="grid"></div>
       <div id="captureGrid" class="grid"></div>
     </section>
 

@@ -1,6 +1,6 @@
 import unittest
 
-from app import bib_warnings, choose_cluster, sanitize_project_name, top_keywords
+from app import bib_warnings, choose_cluster, infer_article_fields, sanitize_project_name, top_keywords
 
 
 class LogicTests(unittest.TestCase):
@@ -19,6 +19,12 @@ class LogicTests(unittest.TestCase):
         w = bib_warnings('@article{x, title={A}}')
         self.assertIn('missing author', w)
         self.assertIn('missing year', w)
+
+    def test_article_autofill(self):
+        out = infer_article_fields('A Survey 2025', 'wireless handover mobility', 'https://ieeexplore.ieee.org/x')
+        self.assertEqual(out['year'], '2025')
+        self.assertEqual(out['venue'], 'ieeexplore.ieee.org')
+        self.assertIn('mobility', out['tags'])
 
 
 if __name__ == '__main__':

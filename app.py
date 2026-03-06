@@ -89,6 +89,26 @@ def bib_warnings(content: str) -> list[str]:
     return warnings
 
 
+def infer_article_fields(title: str, notes: str, source_url: str) -> dict:
+    inferred_cluster = choose_cluster(f"{title}\n{notes}")
+    guessed_year = ""
+    m = re.search(r"\b(19|20)\d{2}\b", title)
+    if m:
+        guessed_year = m.group(0)
+    venue = ""
+    if source_url:
+        host = urlparse(source_url).netloc.lower().replace("www.", "")
+        venue = host.split(":")[0]
+    auto_tags = top_keywords(f"{title}\n{notes}", limit=8)
+    return {
+        "cluster": inferred_cluster,
+        "category": inferred_cluster,
+        "year": guessed_year,
+        "venue": venue,
+        "tags": auto_tags,
+    }
+
+
 def init_db() -> None:
     with sqlite3.connect(DB_PATH) as conn:
         conn.executescript(
@@ -236,8 +256,29 @@ def init_db() -> None:
                 FOREIGN KEY(project_id) REFERENCES projects(id) ON DELETE CASCADE,
                 FOREIGN KEY(linked_capture_id) REFERENCES captures(id) ON DELETE SET NULL
             );
+
+            CREATE TABLE IF NOT EXISTS article_documents (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                article_id INTEGER NOT NULL,
+                file_name TEXT NOT NULL,
+                mime_type TEXT NOT NULL DEFAULT 'application/octet-stream',
+                file_data TEXT NOT NULL DEFAULT '',
+                created_at TEXT NOT NULL,
+                FOREIGN KEY(article_id) REFERENCES articles(id) ON DELETE CASCADE
+            );
             """
         )
+
+
+def ensure_schema_migrations() -> None:
+    with sqlite3.connect(DB_PATH) as conn:
+        article_cols = {r[1] for r in conn.execute("PRAGMA table_info(articles)").fetchall()}
+        if "tags" not in article_cols:
+            conn.execute("ALTER TABLE articles ADD COLUMN tags TEXT NOT NULL DEFAULT '[]'")
+
+        captures_cols = {r[1] for r in conn.execute("PRAGMA table_info(captures)").fetchall()}
+        if "document_id" not in captures_cols:
+            conn.execute("ALTER TABLE captures ADD COLUMN document_id INTEGER")
 
 
 def db_conn() -> sqlite3.Connection:
@@ -284,6 +325,8 @@ class AppHandler(SimpleHTTPRequestHandler):
             return self._get_analysis(parsed.query)
         if p == "/api/article-files":
             return self._get_article_files(parsed.query)
+        if p == "/api/article-documents":
+            return self._get_article_documents(parsed.query)
         if p == "/api/bib":
             return self._get_bib(parsed.query)
         if p == "/api/captures":
@@ -313,8 +356,12 @@ class AppHandler(SimpleHTTPRequestHandler):
             return self._create_article()
         if p == "/api/analysis":
             return self._upsert_analysis()
+        if p == "/api/articles/autofill":
+            return self._autofill_article()
         if p == "/api/article-files":
             return self._upsert_article_files()
+        if p == "/api/article-documents":
+            return self._create_article_document()
         if p == "/api/assets":
             return self._create_asset()
         if p == "/api/bib":
@@ -397,7 +444,7 @@ class AppHandler(SimpleHTTPRequestHandler):
                 return self._json_response({"error": "project not found"}, 404)
             sql = "SELECT * FROM articles WHERE project_id=?"
             args: list = [pid]
-            for field in ("decision_flag", "read_status", "nlp_cluster", "role", "research_task"):
+            for field in ("decision_flag", "read_status", "nlp_cluster", "role", "research_task", "category"):
                 val = q.get(field, [""])[0].strip()
                 if val:
                     sql += f" AND {field}=?"
@@ -407,6 +454,10 @@ class AppHandler(SimpleHTTPRequestHandler):
                 sql += " AND (title LIKE ? OR notes LIKE ? OR authors LIKE ? OR venue LIKE ?)"
                 term = f"%{search}%"
                 args.extend([term, term, term, term])
+            tag = q.get("tag", [""])[0].strip().lower()
+            if tag:
+                sql += " AND lower(tags) LIKE ?"
+                args.append(f"%\"{tag}\"%")
             sql += " ORDER BY id DESC"
             rows = conn.execute(sql, tuple(args)).fetchall()
         out = []
@@ -414,8 +465,18 @@ class AppHandler(SimpleHTTPRequestHandler):
             d = dict(r)
             d["keywords"] = json.loads(d["keywords"])
             d["method_tags"] = json.loads(d["method_tags"])
+            d["tags"] = json.loads(d.get("tags", "[]") or "[]")
             out.append(d)
         self._json_response(out)
+
+    def _autofill_article(self):
+        p = self._parse_json()
+        title = p.get("title", "").strip()
+        notes = p.get("notes", "").strip()
+        source_url = p.get("source_url", "").strip()
+        if not title and not notes and not source_url:
+            return self._json_response({"error": "provide title, notes, or source_url"}, 400)
+        self._json_response(infer_article_fields(title, notes, source_url))
 
     def _create_article(self):
         payload = self._parse_json()
@@ -438,9 +499,13 @@ class AppHandler(SimpleHTTPRequestHandler):
             decision = "maybe"
 
         notes = payload.get("notes", "").strip()
+        auto = infer_article_fields(title, notes, payload.get("source_url", "").strip())
         inferred = choose_cluster(f"{title}\n{notes}\n{payload.get('research_task', '')}")
         keywords = top_keywords(f"{title}\n{notes}")
-        tags = [t.strip() for t in payload.get("method_tags", []) if t.strip()]
+        method_tags = [t.strip() for t in payload.get("method_tags", []) if t.strip()]
+        tags = [t.strip().lower() for t in payload.get("tags", []) if t.strip()]
+        if not tags:
+            tags = auto["tags"]
         relevance = int(payload.get("relevance_score", 50))
         relevance = max(0, min(100, relevance))
 
@@ -454,27 +519,28 @@ class AppHandler(SimpleHTTPRequestHandler):
             dup = conn.execute("SELECT id,title FROM articles WHERE project_id=? AND normalized_title=?", (pid, norm_title)).fetchall()
             cur = conn.execute(
                 """INSERT INTO articles(project_id,title,normalized_title,source_url,category,role,research_task,method_tags,evidence_strength,
-                relevance_score,read_status,decision_flag,authors,venue,year,notes,nlp_cluster,keywords,created_at)
-                VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
+                relevance_score,read_status,decision_flag,authors,venue,year,notes,nlp_cluster,keywords,tags,created_at)
+                VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
                 (
                     pid,
                     title,
                     norm_title,
                     payload.get("source_url", "").strip(),
-                    payload.get("category", "general").strip() or "general",
+                    payload.get("category", "").strip() or auto["category"],
                     role,
                     payload.get("research_task", "").strip(),
-                    json.dumps(tags),
+                    json.dumps(method_tags),
                     evidence,
                     relevance,
                     read_status,
                     decision,
                     payload.get("authors", "").strip(),
-                    payload.get("venue", "").strip(),
-                    payload.get("year", "").strip(),
+                    payload.get("venue", "").strip() or auto["venue"],
+                    payload.get("year", "").strip() or auto["year"],
                     notes,
                     inferred,
                     json.dumps(keywords),
+                    json.dumps(tags),
                     utc_now(),
                 ),
             )
@@ -624,11 +690,12 @@ class AppHandler(SimpleHTTPRequestHandler):
             except KeyError:
                 return self._json_response({"error": "project not found"}, 404)
             cur = conn.execute(
-                """INSERT INTO captures(project_id,article_id,capture_type,selected_text,screenshot_data,page_url,page_title,tag,ocr_text,comment,created_at)
-                VALUES(?,?,?,?,?,?,?,?,?,?,?)""",
+                """INSERT INTO captures(project_id,article_id,document_id,capture_type,selected_text,screenshot_data,page_url,page_title,tag,ocr_text,comment,created_at)
+                VALUES(?,?,?,?,?,?,?,?,?,?,?,?)""",
                 (
                     pid,
                     p.get("article_id"),
+                    p.get("document_id"),
                     p.get("capture_type", "selection"),
                     p.get("selected_text", ""),
                     ss,
@@ -651,8 +718,38 @@ class AppHandler(SimpleHTTPRequestHandler):
                 pid = get_project_id(conn, project)
             except KeyError:
                 return self._json_response({"error": "project not found"}, 404)
-            rows = conn.execute("SELECT * FROM captures WHERE project_id=? ORDER BY id DESC", (pid,)).fetchall()
+            rows = conn.execute(
+                """SELECT c.*, d.file_name AS document_name
+                FROM captures c
+                LEFT JOIN article_documents d ON d.id=c.document_id
+                WHERE c.project_id=? ORDER BY c.id DESC""",
+                (pid,),
+            ).fetchall()
         self._json_response([dict(r) for r in rows])
+
+    def _get_article_documents(self, query: str):
+        aid = parse_qs(query).get("article_id", [""])[0]
+        if not aid:
+            return self._json_response({"error": "article_id required"}, 400)
+        with db_conn() as conn:
+            rows = conn.execute(
+                "SELECT id,article_id,file_name,mime_type,created_at FROM article_documents WHERE article_id=? ORDER BY id DESC",
+                (aid,),
+            ).fetchall()
+        self._json_response([dict(r) for r in rows])
+
+    def _create_article_document(self):
+        p = self._parse_json()
+        aid = p.get("article_id")
+        if not aid or not p.get("file_name", "").strip():
+            return self._json_response({"error": "article_id and file_name required"}, 400)
+        file_data = p.get("file_data", "").strip()
+        with db_conn() as conn:
+            cur = conn.execute(
+                "INSERT INTO article_documents(article_id,file_name,mime_type,file_data,created_at) VALUES(?,?,?,?,?)",
+                (aid, p.get("file_name", "").strip(), p.get("mime_type", "application/octet-stream"), file_data, utc_now()),
+            )
+        self._json_response({"id": cur.lastrowid}, 201)
 
     def _create_note(self):
         p = self._parse_json()
@@ -880,6 +977,7 @@ class AppHandler(SimpleHTTPRequestHandler):
 
 def run() -> None:
     init_db()
+    ensure_schema_migrations()
     port = int(os.getenv("PORT", "5000"))
     server = ThreadingHTTPServer(("0.0.0.0", port), AppHandler)
     print(f"Serving ArticleManager on http://0.0.0.0:{port}")
