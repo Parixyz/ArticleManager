@@ -1,15 +1,25 @@
-# ArticleManager
+# ArticleManager Pro
 
-A lightweight local web app for LaTeX article organization.
+A user-friendly GUI for research workflows with **projects**, **articles**, **BibTeX**, **captures/screenshots**, and **NLP clustering**.
 
-## Features
+## What it does
 
-- Create LaTeX-style project folders.
-- Tabs to manage:
-  - categorized article entries,
-  - per-project BibTeX content (`references.bib`),
-  - article screenshots stored under a logical `screenshots/` folder.
-- Data is persisted in browser local storage.
+- Create project workspaces (stored in SQLite).
+- Add articles with title/source/notes and auto-inferred NLP cluster + keywords.
+- Store BibTeX entries in a per-project database table.
+- Save highlighted text and screenshot captures from the GUI or a browser extension.
+- Preview captures directly in the app.
+
+## Extension connectivity
+
+Use this API from a browser extension content script:
+
+- `POST /api/extension/capture`
+  - `project` (required)
+  - `capture_type` (`selection` or `screenshot`)
+  - `selected_text` (optional)
+  - `screenshot_data` (optional `data:image/...;base64,...`)
+  - `page_url` (optional)
 
 ## Run
 
@@ -17,4 +27,8 @@ A lightweight local web app for LaTeX article organization.
 python app.py
 ```
 
-Then open `http://localhost:5000`.
+Open: `http://localhost:5000`
+
+## Data
+
+- SQLite DB file: `article_manager.db`

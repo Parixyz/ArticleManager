@@ -1,49 +1,50 @@
-const storeKey = 'latexArticleManagerStore';
-
-const projectNameInput = document.getElementById('projectName');
-const createProjectBtn = document.getElementById('createProjectBtn');
-const projectSelect = document.getElementById('projectSelect');
-const articleTitleInput = document.getElementById('articleTitle');
-const articleCategoryInput = document.getElementById('articleCategory');
-const articleSourceInput = document.getElementById('articleSource');
-const addArticleBtn = document.getElementById('addArticleBtn');
-const articlesList = document.getElementById('articlesList');
-const bibContent = document.getElementById('bibContent');
-const bibSaveMsg = document.getElementById('bibSaveMsg');
-const saveBibBtn = document.getElementById('saveBibBtn');
-const screenshotFile = document.getElementById('screenshotFile');
-const uploadShotBtn = document.getElementById('uploadShotBtn');
-const screenshotsList = document.getElementById('screenshotsList');
+const ui = {
+  projectName: document.getElementById('projectName'),
+  projectDescription: document.getElementById('projectDescription'),
+  createProjectBtn: document.getElementById('createProjectBtn'),
+  projectSelect: document.getElementById('projectSelect'),
+  refreshBtn: document.getElementById('refreshBtn'),
+  articleTitle: document.getElementById('articleTitle'),
+  articleCategory: document.getElementById('articleCategory'),
+  articleSource: document.getElementById('articleSource'),
+  articleNotes: document.getElementById('articleNotes'),
+  addArticleBtn: document.getElementById('addArticleBtn'),
+  clusterHint: document.getElementById('clusterHint'),
+  articlesList: document.getElementById('articlesList'),
+  bibKey: document.getElementById('bibKey'),
+  bibContent: document.getElementById('bibContent'),
+  saveBibBtn: document.getElementById('saveBibBtn'),
+  bibList: document.getElementById('bibList'),
+  screenshotFile: document.getElementById('screenshotFile'),
+  captureUrl: document.getElementById('captureUrl'),
+  uploadCaptureBtn: document.getElementById('uploadCaptureBtn'),
+  selectedText: document.getElementById('selectedText'),
+  saveTextCaptureBtn: document.getElementById('saveTextCaptureBtn'),
+  capturesGrid: document.getElementById('capturesGrid'),
+  extensionSnippet: document.getElementById('extensionSnippet'),
+};
 
 const tabs = document.querySelectorAll('.tab');
 const panels = document.querySelectorAll('.panel');
 
-function sanitize(name) {
-  return name.trim().replace(/[^a-zA-Z0-9_-]+/g, '_').replace(/^_+|_+$/g, '');
-}
-
-function loadStore() {
-  const raw = localStorage.getItem(storeKey);
-  if (!raw) return { projects: {} };
-  return JSON.parse(raw);
-}
-
-function saveStore(store) {
-  localStorage.setItem(storeKey, JSON.stringify(store));
-}
-
-function currentProjectName() {
-  return projectSelect.value;
-}
-
-function ensureProject(store, name) {
-  if (!store.projects[name]) {
-    store.projects[name] = {
-      articles: [],
-      bib: '% BibTeX entries\n',
-      screenshots: [],
-    };
+async function api(path, options = {}) {
+  const res = await fetch(path, {
+    headers: { 'Content-Type': 'application/json', ...(options.headers || {}) },
+    ...options,
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({ error: 'request failed' }));
+    throw new Error(err.error || 'request failed');
   }
+  return res.json();
+}
+
+function currentProject() {
+  return ui.projectSelect.value;
+}
+
+function setExtensionSnippet() {
+  ui.extensionSnippet.textContent = `// Chrome extension content script example\nconst selectedText = window.getSelection().toString();\nconst payload = {\n  project: '${currentProject() || 'YOUR_PROJECT'}',\n  capture_type: 'selection',\n  selected_text: selectedText,\n  page_url: window.location.href\n};\nfetch('http://localhost:5000/api/extension/capture', {\n  method: 'POST',\n  headers: { 'Content-Type': 'application/json' },\n  body: JSON.stringify(payload)\n});`;
 }
 
 for (const tab of tabs) {
@@ -55,136 +56,159 @@ for (const tab of tabs) {
   });
 }
 
-function refreshProjects() {
-  const store = loadStore();
-  const names = Object.keys(store.projects).sort();
-  projectSelect.innerHTML = '';
-
-  for (const name of names) {
+async function refreshProjects() {
+  const projects = await api('/api/projects');
+  ui.projectSelect.innerHTML = '';
+  for (const p of projects) {
     const option = document.createElement('option');
-    option.value = name;
-    option.textContent = name;
-    projectSelect.appendChild(option);
+    option.value = p.name;
+    option.textContent = p.name;
+    ui.projectSelect.appendChild(option);
   }
-
-  if (names.length > 0) {
-    loadProjectData();
+  if (projects.length) {
+    await loadAll();
   } else {
-    articlesList.innerHTML = '';
-    bibContent.value = '';
-    screenshotsList.innerHTML = '';
+    ui.articlesList.innerHTML = '';
+    ui.bibList.innerHTML = '';
+    ui.capturesGrid.innerHTML = '';
   }
+  setExtensionSnippet();
 }
 
-function createProject() {
-  const rawName = projectNameInput.value;
-  const name = sanitize(rawName);
-  if (!name) return;
-
-  const store = loadStore();
-  ensureProject(store, name);
-  saveStore(store);
-  projectNameInput.value = '';
-
-  refreshProjects();
-  projectSelect.value = name;
-  loadProjectData();
-}
-
-function loadArticles(project) {
-  articlesList.innerHTML = '';
-  for (const a of project.articles) {
-    const li = document.createElement('li');
-    li.textContent = `[${a.category}] ${a.title}${a.source ? ` — ${a.source}` : ''}`;
-    articlesList.appendChild(li);
-  }
-}
-
-function addArticle() {
-  const title = articleTitleInput.value.trim();
-  if (!title) return;
-
-  const store = loadStore();
-  const projectName = currentProjectName();
-  ensureProject(store, projectName);
-
-  store.projects[projectName].articles.push({
-    title,
-    category: articleCategoryInput.value.trim() || 'General',
-    source: articleSourceInput.value.trim(),
+async function createProject() {
+  await api('/api/projects', {
+    method: 'POST',
+    body: JSON.stringify({
+      name: ui.projectName.value,
+      description: ui.projectDescription.value,
+    }),
   });
-
-  saveStore(store);
-  articleTitleInput.value = '';
-  articleCategoryInput.value = '';
-  articleSourceInput.value = '';
-  loadProjectData();
+  ui.projectName.value = '';
+  ui.projectDescription.value = '';
+  await refreshProjects();
 }
 
-function saveBib() {
-  const store = loadStore();
-  const projectName = currentProjectName();
-  ensureProject(store, projectName);
-  store.projects[projectName].bib = bibContent.value;
-  saveStore(store);
-  bibSaveMsg.textContent = `Saved to ${projectName}/references.bib`;
-}
-
-function loadScreenshots(projectName, project) {
-  screenshotsList.innerHTML = '';
-  for (const shot of project.screenshots) {
+async function loadArticles() {
+  const rows = await api(`/api/articles?project=${encodeURIComponent(currentProject())}`);
+  ui.articlesList.innerHTML = '';
+  for (const a of rows) {
     const li = document.createElement('li');
-    const link = document.createElement('a');
-    link.href = shot.dataUrl;
-    link.download = shot.filename;
-    link.textContent = `${projectName}/screenshots/${shot.filename}`;
-    li.appendChild(link);
-    screenshotsList.appendChild(li);
+    li.innerHTML = `<strong>${a.title}</strong> <span class="badge">${a.category}</span> <span class="badge info">${a.nlp_cluster}</span><br/><small>${a.source_url || ''}</small><br/><small>keywords: ${(a.keywords || []).join(', ')}</small>`;
+    ui.articlesList.appendChild(li);
   }
 }
 
-function uploadScreenshot() {
-  if (!screenshotFile.files.length) return;
-
-  const file = screenshotFile.files[0];
-  const reader = new FileReader();
-
-  reader.onload = () => {
-    const store = loadStore();
-    const projectName = currentProjectName();
-    ensureProject(store, projectName);
-
-    store.projects[projectName].screenshots.push({
-      filename: `${Date.now()}_${file.name}`,
-      dataUrl: reader.result,
-    });
-
-    saveStore(store);
-    screenshotFile.value = '';
-    loadProjectData();
-  };
-
-  reader.readAsDataURL(file);
+async function addArticle() {
+  const out = await api('/api/articles', {
+    method: 'POST',
+    body: JSON.stringify({
+      project: currentProject(),
+      title: ui.articleTitle.value,
+      category: ui.articleCategory.value,
+      source_url: ui.articleSource.value,
+      notes: ui.articleNotes.value,
+    }),
+  });
+  ui.clusterHint.textContent = `NLP cluster: ${out.nlp_cluster} | keywords: ${(out.keywords || []).join(', ')}`;
+  ui.articleTitle.value = '';
+  ui.articleCategory.value = '';
+  ui.articleSource.value = '';
+  ui.articleNotes.value = '';
+  await loadArticles();
 }
 
-function loadProjectData() {
-  const store = loadStore();
-  const projectName = currentProjectName();
-  if (!projectName) return;
-
-  const project = store.projects[projectName];
-  if (!project) return;
-
-  loadArticles(project);
-  bibContent.value = project.bib;
-  bibSaveMsg.textContent = '';
-  loadScreenshots(projectName, project);
+async function loadBib() {
+  const rows = await api(`/api/bib?project=${encodeURIComponent(currentProject())}`);
+  ui.bibList.innerHTML = '';
+  for (const b of rows) {
+    const li = document.createElement('li');
+    li.innerHTML = `<strong>${b.bib_key}</strong><pre>${b.bib_content.replace(/</g, '&lt;')}</pre>`;
+    ui.bibList.appendChild(li);
+  }
 }
 
-createProjectBtn.addEventListener('click', createProject);
-projectSelect.addEventListener('change', loadProjectData);
-addArticleBtn.addEventListener('click', addArticle);
-saveBibBtn.addEventListener('click', saveBib);
-uploadShotBtn.addEventListener('click', uploadScreenshot);
+async function saveBib() {
+  await api('/api/bib', {
+    method: 'POST',
+    body: JSON.stringify({
+      project: currentProject(),
+      bib_key: ui.bibKey.value,
+      bib_content: ui.bibContent.value,
+    }),
+  });
+  ui.bibKey.value = '';
+  ui.bibContent.value = '';
+  await loadBib();
+}
 
-refreshProjects();
+function fileToDataUrl(file) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(reader.result);
+    reader.onerror = reject;
+    reader.readAsDataURL(file);
+  });
+}
+
+async function uploadScreenshotCapture() {
+  const file = ui.screenshotFile.files[0];
+  if (!file) return;
+  const screenshotData = await fileToDataUrl(file);
+  await api('/api/extension/capture', {
+    method: 'POST',
+    body: JSON.stringify({
+      project: currentProject(),
+      capture_type: 'screenshot',
+      screenshot_data: screenshotData,
+      page_url: ui.captureUrl.value,
+    }),
+  });
+  ui.screenshotFile.value = '';
+  ui.captureUrl.value = '';
+  await loadCaptures();
+}
+
+async function saveTextCapture() {
+  await api('/api/extension/capture', {
+    method: 'POST',
+    body: JSON.stringify({
+      project: currentProject(),
+      capture_type: 'selection',
+      selected_text: ui.selectedText.value,
+      page_url: ui.captureUrl.value,
+    }),
+  });
+  ui.selectedText.value = '';
+  await loadCaptures();
+}
+
+async function loadCaptures() {
+  const rows = await api(`/api/captures?project=${encodeURIComponent(currentProject())}`);
+  ui.capturesGrid.innerHTML = '';
+  for (const c of rows) {
+    const card = document.createElement('div');
+    card.className = 'capture';
+    const text = c.selected_text ? `<p>${c.selected_text}</p>` : '';
+    const img = c.screenshot_data ? `<img src="${c.screenshot_data}" alt="capture" />` : '';
+    card.innerHTML = `<small>${c.capture_type} • ${c.page_url || 'no-url'}</small>${text}${img}`;
+    ui.capturesGrid.appendChild(card);
+  }
+}
+
+async function loadAll() {
+  if (!currentProject()) return;
+  await Promise.all([loadArticles(), loadBib(), loadCaptures()]);
+  setExtensionSnippet();
+}
+
+ui.createProjectBtn.addEventListener('click', () => createProject().catch((e) => alert(e.message)));
+ui.refreshBtn.addEventListener('click', () => refreshProjects().catch((e) => alert(e.message)));
+ui.projectSelect.addEventListener('change', () => loadAll().catch((e) => alert(e.message)));
+ui.addArticleBtn.addEventListener('click', () => addArticle().catch((e) => alert(e.message)));
+ui.saveBibBtn.addEventListener('click', () => saveBib().catch((e) => alert(e.message)));
+ui.uploadCaptureBtn.addEventListener('click', () => uploadScreenshotCapture().catch((e) => alert(e.message)));
+ui.saveTextCaptureBtn.addEventListener('click', () => saveTextCapture().catch((e) => alert(e.message)));
+
+refreshProjects().catch(() => {
+  setExtensionSnippet();
+});
