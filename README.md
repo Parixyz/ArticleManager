@@ -31,6 +31,16 @@ A user-friendly, survey-first research manager with a **database-backed GUI**, s
   - project CSV,
   - project `.bib`.
 - LaTeX render tab using MathJax (live preview).
+- Presenter upgrades:
+  - full-view toggle for center preview pane,
+  - zoom enable/disable with wheel + keyboard shortcuts,
+  - fit-width zoom preset,
+  - file tree search/filter,
+  - direct `main.tex` render from Presenter,
+  - bulk multi-file add into `SourceArticles/`.
+- Project bootstrap defaults:
+  - `SourceArticles/` and `.bib/` directories,
+  - `main.tex` + `.bib/references.bib` created automatically.
 
 ## Run
 
