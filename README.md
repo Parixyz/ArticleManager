@@ -6,6 +6,8 @@ A user-friendly, survey-first research manager with a **database-backed GUI**, s
 
 - Project workspace with taxonomy + writing outline.
 - Dashboard intelligence: article counts, read/included stats, cluster distribution, missing BibTeX/analysis.
+- Management tab dedicated to article CRUD + bulk file-driven article add.
+- Separate Analysis tab for structured article analysis and capture/source memory.
 - Article decision system fields:
   - role, task, method tags,
   - evidence strength,
@@ -43,6 +45,7 @@ A user-friendly, survey-first research manager with a **database-backed GUI**, s
   - `SourceArticles/` and `.bib/` directories,
   - `main.tex` + `.bib/references.bib` created automatically,
   - each new article gets its own folder under `SourceArticles/`.
+- NLP auto-tagging now combines stemming-aware keywords, keyphrase extraction, and weighted topic clustering.
 
 ## Run
 

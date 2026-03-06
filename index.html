@@ -35,6 +35,7 @@
     <section class="tabs">
       <button class="tab active" data-target="presenterTab">Presenter</button>
       <button class="tab" data-target="managementTab">Management</button>
+      <button class="tab" data-target="analysisTab">Analysis</button>
       <button class="tab" data-target="notesTab">Noter (Side-by-side)</button>
       <button class="tab" data-target="latexTab">LaTeX Render</button>
       <button class="tab" data-target="checklistTab">Checklist</button>
@@ -83,7 +84,7 @@
 
     <section id="managementTab" class="panel card">
       <h2>Project Article Management</h2>
-      <p class="hint">Split screen workspace: left side searchable/editable article table, right side article details, analysis, and screenshot source manager.</p>
+      <p class="hint">Management is focused only on adding and maintaining article entries. Use the Analysis tab for deep analysis and source captures.</p>
       <div class="management-split">
         <div class="management-left">
           <h3>Articles</h3>
@@ -112,8 +113,8 @@
           <h3>Edit / Add Article</h3>
           <input id="editArticleId" type="hidden" />
           <div class="row wrap">
-            <input type="file" id="managementArticleFile" accept=".pdf,.txt,.md,.tex,.bib" />
-            <button id="addArticleByFileBtn">Add Article by File (Auto Fill)</button>
+            <input type="file" id="managementArticleFile" multiple accept=".pdf,.txt,.md,.tex,.bib" />
+            <button id="addArticleByFileBtn">Add Article(s) by File (Auto Fill)</button>
           </div>
           <div class="row wrap">
             <input id="aTitle" placeholder="Title" />
@@ -139,7 +140,15 @@
             <button id="deleteArticleBtn">Delete Selected</button>
           </div>
           <div id="addArticleMsg" class="hint"></div>
+        </div>
+      </div>
+    </section>
 
+    <section id="analysisTab" class="panel card">
+      <h2>Article Analysis</h2>
+      <p class="hint">Dedicated analysis workspace with structured fields, extracted article text, and source/screenshot memory.</p>
+      <div class="management-split">
+        <div class="management-right">
           <h3>Structured Analysis</h3>
           <div class="row wrap"><select id="analysisArticleSelect"></select></div>
           <div class="row wrap two-col">
