@@ -264,6 +264,8 @@ class AppHandler(SimpleHTTPRequestHandler):
             return self._get_articles(parsed.query)
         if p == "/api/analysis":
             return self._get_analysis(parsed.query)
+        if p == "/api/article-files":
+            return self._get_article_files(parsed.query)
         if p == "/api/bib":
             return self._get_bib(parsed.query)
         if p == "/api/captures":
@@ -291,6 +293,8 @@ class AppHandler(SimpleHTTPRequestHandler):
             return self._create_article()
         if p == "/api/analysis":
             return self._upsert_analysis()
+        if p == "/api/article-files":
+            return self._upsert_article_files()
         if p == "/api/assets":
             return self._create_asset()
         if p == "/api/bib":
@@ -451,6 +455,15 @@ class AppHandler(SimpleHTTPRequestHandler):
                 ),
             )
             article_id = cur.lastrowid
+            conn.execute(
+                "INSERT INTO article_analysis(article_id,updated_at) VALUES(?,?)",
+                (article_id, utc_now()),
+            )
+            conn.execute(
+                """INSERT INTO article_files(article_id,file_name,full_text,section_segmentation,references_extraction,metadata_extraction,created_at)
+                VALUES(?,?,?,?,?,?,?)""",
+                (article_id, "primary", "", "", "", "", utc_now()),
+            )
         self._json_response({"id": article_id, "nlp_cluster": inferred, "keywords": keywords, "duplicate_like": [dict(x) for x in dup]}, 201)
 
     def _get_analysis(self, query: str):
@@ -478,6 +491,46 @@ class AppHandler(SimpleHTTPRequestHandler):
                 VALUES(?,{','.join('?'*len(fields))},?)
                 ON CONFLICT(article_id) DO UPDATE SET {','.join(f'{f}=excluded.{f}' for f in fields)},updated_at=excluded.updated_at""",
                 [aid, *vals, utc_now()],
+            )
+        self._json_response({"status": "saved"}, 201)
+
+    def _get_article_files(self, query: str):
+        aid = parse_qs(query).get("article_id", [""])[0]
+        if not aid:
+            return self._json_response({"error": "article_id required"}, 400)
+        with db_conn() as conn:
+            row = conn.execute(
+                """SELECT article_id,file_name,full_text,section_segmentation,references_extraction,metadata_extraction,created_at
+                FROM article_files WHERE article_id=? ORDER BY id DESC LIMIT 1""",
+                (aid,),
+            ).fetchone()
+        if row:
+            return self._json_response(dict(row))
+        self._json_response({
+            "article_id": int(aid),
+            "file_name": "primary",
+            "full_text": "",
+            "section_segmentation": "",
+            "references_extraction": "",
+            "metadata_extraction": "",
+        })
+
+    def _upsert_article_files(self):
+        p = self._parse_json()
+        aid = p.get("article_id")
+        if not aid:
+            return self._json_response({"error": "article_id required"}, 400)
+        fields = ["full_text", "section_segmentation", "references_extraction", "metadata_extraction"]
+        vals = [p.get(f, "") for f in fields]
+        with db_conn() as conn:
+            conn.execute(
+                "DELETE FROM article_files WHERE article_id=?",
+                (aid,),
+            )
+            conn.execute(
+                """INSERT INTO article_files(article_id,file_name,full_text,section_segmentation,references_extraction,metadata_extraction,created_at)
+                VALUES(?,?,?,?,?,?,?)""",
+                [aid, p.get("file_name", "primary"), *vals, utc_now()],
             )
         self._json_response({"status": "saved"}, 201)
 

@@ -151,6 +151,7 @@ async function loadAnalysis() {
   const articleId = $('analysisArticleSelect').value;
   if (!articleId) return;
   const d = await api(`/api/analysis?article_id=${articleId}`);
+  const fileData = await api(`/api/article-files?article_id=${articleId}`);
   const map = {
     fProblem: 'problem_statement',
     fSetting: 'setting_domain',
@@ -168,6 +169,11 @@ async function loadAnalysis() {
     fTables: 'extracted_tables',
   };
   for (const [id, key] of Object.entries(map)) $(id).value = d[key] || '';
+  $('afName').value = fileData.file_name || 'primary';
+  $('afFullText').value = fileData.full_text || '';
+  $('afSections').value = fileData.section_segmentation || '';
+  $('afReferences').value = fileData.references_extraction || '';
+  $('afMetadata').value = fileData.metadata_extraction || '';
 }
 
 async function saveAnalysis() {
@@ -192,6 +198,29 @@ async function saveAnalysis() {
     }),
   });
   alert('analysis saved');
+}
+
+async function saveArticleFile() {
+  await api('/api/article-files', {
+    method: 'POST',
+    body: JSON.stringify({
+      article_id: Number($('analysisArticleSelect').value),
+      file_name: $('afName').value,
+      full_text: $('afFullText').value,
+      section_segmentation: $('afSections').value,
+      references_extraction: $('afReferences').value,
+      metadata_extraction: $('afMetadata').value,
+    }),
+  });
+  alert('article file saved');
+}
+
+function extractDocumentBody(latex) {
+  const begin = latex.match(/\\begin\s*\{document\}/i);
+  const end = latex.match(/\\end\s*\{document\}/i);
+  if (!begin || !end || begin.index >= end.index) return latex;
+  const startIdx = begin.index + begin[0].length;
+  return latex.slice(startIdx, end.index).trim();
 }
 
 function fileToDataUrl(file) {
@@ -310,7 +339,7 @@ async function addChecklist() {
 }
 
 function renderLatex() {
-  $('latexPreview').innerHTML = $('latexInput').value;
+  $('latexPreview').textContent = extractDocumentBody($('latexInput').value);
   if (window.MathJax?.typesetPromise) {
     window.MathJax.typesetPromise([$('latexPreview')]);
   }
@@ -330,6 +359,7 @@ $('applyFilterBtn').addEventListener('click', () => loadArticles().catch((e) => 
 $('addArticleBtn').addEventListener('click', () => addArticle().catch((e) => alert(e.message)));
 $('analysisArticleSelect').addEventListener('change', () => loadAnalysis().catch((e) => alert(e.message)));
 $('saveAnalysisBtn').addEventListener('click', () => saveAnalysis().catch((e) => alert(e.message)));
+$('saveArticleFileBtn').addEventListener('click', () => saveArticleFile().catch((e) => alert(e.message)));
 $('saveCaptureBtn').addEventListener('click', () => saveCapture().catch((e) => alert(e.message)));
 $('saveNoteBtn').addEventListener('click', () => saveNote().catch((e) => alert(e.message)));
 $('searchNotesBtn').addEventListener('click', () => loadNotes().catch((e) => alert(e.message)));
