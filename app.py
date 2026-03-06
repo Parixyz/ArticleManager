@@ -32,6 +32,20 @@ def utc_now() -> str:
     return datetime.now(timezone.utc).isoformat()
 
 
+def resolve_pdflatex_cmd() -> list[str] | None:
+    configured = os.environ.get("PDFLATEX_PATH", "").strip()
+    if configured:
+        configured_path = Path(configured)
+        if configured_path.exists() and configured_path.is_file():
+            return [str(configured_path)]
+        return None
+
+    discovered = shutil.which("pdflatex")
+    if discovered is None:
+        return None
+    return [discovered]
+
+
 def sanitize_project_name(name: str) -> str:
     safe = re.sub(r"[^a-zA-Z0-9_-]+", "_", name.strip()).strip("_")
     if not safe:
@@ -909,14 +923,18 @@ class AppHandler(SimpleHTTPRequestHandler):
         latex = p.get("latex", "").strip()
         if not latex:
             return self._json_response({"error": "latex required"}, 400)
-        if shutil.which("pdflatex") is None:
-            return self._json_response({"error": "pdflatex is not available on this server"}, 503)
+        pdflatex_cmd = resolve_pdflatex_cmd()
+        if pdflatex_cmd is None:
+            return self._json_response({
+                "error": "pdflatex is not available on this server",
+                "hint": "Set PDFLATEX_PATH to an absolute pdflatex executable path when PATH is unavailable to the server process.",
+            }, 503)
 
         with tempfile.TemporaryDirectory() as tmp:
             tex_path = Path(tmp) / "main.tex"
             tex_path.write_text(latex, encoding="utf-8")
             proc = subprocess.run(
-                ["pdflatex", "-interaction=nonstopmode", "-halt-on-error", "main.tex"],
+                pdflatex_cmd + ["-interaction=nonstopmode", "-halt-on-error", "main.tex"],
                 cwd=tmp,
                 capture_output=True,
                 text=True,
