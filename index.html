@@ -35,10 +35,7 @@
     <section class="tabs">
       <button class="tab active" data-target="presenterTab">Presenter</button>
       <button class="tab" data-target="managementTab">Management</button>
-      <button class="tab" data-target="analysisTab">Structured Analysis</button>
-      <button class="tab" data-target="capturesTab">Screenshots & Evidence</button>
       <button class="tab" data-target="notesTab">Noter (Side-by-side)</button>
-      <button class="tab" data-target="tableTab">Table Maker</button>
       <button class="tab" data-target="latexTab">LaTeX Render</button>
       <button class="tab" data-target="checklistTab">Checklist</button>
     </section>
@@ -85,108 +82,112 @@
     </section>
 
     <section id="managementTab" class="panel card">
-      <h2>Article Decision System</h2>
-      <div id="dashboardGrid" class="grid"></div>
-      <div id="managementPlots" class="plot-grid"></div>
-      <h3>Quick search/filter</h3>
-      <div class="row wrap">
-        <input id="searchQuery" placeholder="Search title/notes/authors/venue" />
-        <select id="filterDecision"><option value="">Any decision</option><option>include</option><option>maybe</option><option>exclude</option></select>
-        <select id="filterRead"><option value="">Any read status</option><option>unread</option><option>skimmed</option><option>read</option><option>deeply analyzed</option></select>
-        <input id="filterCategory" placeholder="Category" />
-        <input id="filterCluster" placeholder="Cluster" />
-        <input id="filterTag" placeholder="Tag" />
-        <button id="applyFilterBtn">Apply Filter</button>
+      <h2>Project Article Management</h2>
+      <p class="hint">Split screen workspace: left side searchable/editable article table, right side article details, analysis, and screenshot source manager.</p>
+      <div class="management-split">
+        <div class="management-left">
+          <h3>Articles</h3>
+          <div class="row wrap">
+            <input id="searchQuery" placeholder="Search title/notes/authors/venue" />
+            <select id="filterDecision"><option value="">Any decision</option><option>include</option><option>maybe</option><option>exclude</option></select>
+            <select id="filterRead"><option value="">Any read status</option><option>unread</option><option>skimmed</option><option>read</option><option>deeply analyzed</option></select>
+            <input id="filterCategory" placeholder="Category" />
+            <input id="filterCluster" placeholder="Cluster" />
+            <input id="filterTag" placeholder="Tag" />
+            <button id="applyFilterBtn">Apply Filter</button>
+          </div>
+          <div class="row wrap">
+            <button id="clearArticlesBtn">Clear Project Articles</button>
+          </div>
+          <table id="articleTable" class="article-table">
+            <thead>
+              <tr><th>ID</th><th>Title</th><th>Read</th><th>Decision</th><th>Cluster</th><th>Tags</th></tr>
+            </thead>
+            <tbody></tbody>
+          </table>
+          <div id="dashboardGrid" class="grid"></div>
+          <div id="managementPlots" class="plot-grid"></div>
+        </div>
+        <div class="management-right">
+          <h3>Edit / Add Article</h3>
+          <input id="editArticleId" type="hidden" />
+          <div class="row wrap">
+            <input type="file" id="managementArticleFile" accept=".pdf,.txt,.md,.tex,.bib" />
+            <button id="addArticleByFileBtn">Add Article by File (Auto Fill)</button>
+          </div>
+          <div class="row wrap">
+            <input id="aTitle" placeholder="Title" />
+            <input id="aSource" placeholder="Source URL" />
+            <input id="aCategory" placeholder="Category/topic" />
+            <input id="aTask" placeholder="Research task" />
+            <input id="aMethodTags" placeholder="Method tags" />
+            <input id="aAuthors" placeholder="Authors" />
+            <input id="aVenue" placeholder="Venue" />
+            <input id="aYear" placeholder="Year" />
+            <select id="aRole"><option>background</option><option>related work</option><option>benchmark</option><option>method</option><option>dataset</option><option>survey</option><option>theory</option><option>application</option></select>
+            <select id="aEvidence"><option>strong</option><option>moderate</option><option>weak</option><option selected>unclear</option></select>
+            <select id="aRead"><option selected>unread</option><option>skimmed</option><option>read</option><option>deeply analyzed</option></select>
+            <select id="aDecision"><option>include</option><option selected>maybe</option><option>exclude</option></select>
+            <input id="aRelevance" type="number" min="0" max="100" value="50" placeholder="Relevance 0-100" />
+            <input id="aTags" placeholder="Tags (comma separated)" />
+          </div>
+          <textarea id="aNotes" rows="5" placeholder="Notes / abstract for NLP clustering"></textarea>
+          <div class="row wrap">
+            <button id="autoFillArticleBtn">Auto Fill Fields</button>
+            <button id="addArticleBtn">Add Article</button>
+            <button id="updateArticleBtn">Update Selected</button>
+            <button id="deleteArticleBtn">Delete Selected</button>
+          </div>
+          <div id="addArticleMsg" class="hint"></div>
+
+          <h3>Structured Analysis</h3>
+          <div class="row wrap"><select id="analysisArticleSelect"></select></div>
+          <div class="row wrap two-col">
+            <textarea id="fProblem" placeholder="problem statement"></textarea>
+            <textarea id="fSetting" placeholder="setting/domain"></textarea>
+            <textarea id="fDataset" placeholder="dataset/environment"></textarea>
+            <textarea id="fModel" placeholder="model/algorithm"></textarea>
+            <textarea id="fBaselines" placeholder="baseline methods"></textarea>
+            <textarea id="fMetrics" placeholder="evaluation metrics"></textarea>
+            <textarea id="fFindings" placeholder="key findings"></textarea>
+            <textarea id="fLimitations" placeholder="limitations"></textarea>
+            <textarea id="fAssumptions" placeholder="assumptions"></textarea>
+            <textarea id="fFuture" placeholder="future work"></textarea>
+            <textarea id="fCommentary" placeholder="your commentary"></textarea>
+            <textarea id="fFigures" placeholder="extracted figures"></textarea>
+            <textarea id="fEquations" placeholder="extracted equations"></textarea>
+            <textarea id="fTables" placeholder="extracted tables"></textarea>
+          </div>
+          <button id="saveAnalysisBtn">Save Analysis</button>
+
+          <h3>Article File (.txt/.bib/full text)</h3>
+          <div class="row wrap two-col">
+            <input id="afName" placeholder="file name (e.g., manuscript.txt or refs.bib)" />
+            <textarea id="afFullText" placeholder="full extracted text"></textarea>
+            <textarea id="afSections" placeholder="section segmentation"></textarea>
+            <textarea id="afReferences" placeholder="references extraction"></textarea>
+            <textarea id="afMetadata" placeholder="metadata extraction"></textarea>
+          </div>
+          <button id="saveArticleFileBtn">Save Article File</button>
+
+          <h3>Screenshoter & Source Memory</h3>
+          <div class="row wrap">
+            <select id="captureArticleSelect"></select>
+            <input type="file" id="captureFile" accept="image/*" />
+            <input id="captureUrl" placeholder="source URL" />
+            <input id="captureTitle" placeholder="page title" />
+            <input id="captureTag" placeholder="tag/category" />
+            <select id="captureDocumentSelect"></select>
+          </div>
+          <textarea id="captureText" rows="3" placeholder="selected text / highlight (.txt source can be stored here)"></textarea>
+          <textarea id="captureComment" rows="2" placeholder="manual comment"></textarea>
+          <button id="saveCaptureBtn">Save Capture</button>
+          <div id="captureGallery" class="grid"></div>
+          <div id="captureGrid" class="grid"></div>
+        </div>
       </div>
-      <div class="row wrap">
-        <select id="groupBy"><option value="none">No Group</option><option value="category">Group by Category</option><option value="cluster">Group by Cluster</option></select>
-      </div>
-      <div id="articleGroups"></div>
-      <ul id="articleList"></ul>
-      <h3>Add article by file</h3>
-      <div class="row wrap">
-        <input type="file" id="managementArticleFile" accept=".pdf,.txt,.md,.tex,.bib" />
-        <button id="addArticleByFileBtn">Add Article by File (Auto Fill)</button>
-      </div>
-      <div class="row wrap">
-        <input id="aTitle" placeholder="Title" />
-        <input id="aSource" placeholder="Source URL" />
-        <input id="aCategory" placeholder="Category/topic" />
-        <input id="aTask" placeholder="Research task (e.g., handover, FL optimization)" />
-        <input id="aMethodTags" placeholder="Method tags (RL,FL,GNN,...)" />
-        <input id="aAuthors" placeholder="Authors" />
-        <input id="aVenue" placeholder="Venue" />
-        <input id="aYear" placeholder="Year" />
-        <select id="aRole"><option>background</option><option>related work</option><option>benchmark</option><option>method</option><option>dataset</option><option>survey</option><option>theory</option><option>application</option></select>
-        <select id="aEvidence"><option>strong</option><option>moderate</option><option>weak</option><option selected>unclear</option></select>
-        <select id="aRead"><option selected>unread</option><option>skimmed</option><option>read</option><option>deeply analyzed</option></select>
-        <select id="aDecision"><option>include</option><option selected>maybe</option><option>exclude</option></select>
-        <input id="aRelevance" type="number" min="0" max="100" value="50" placeholder="Relevance 0-100" />
-        <input id="aTags" placeholder="Tags (comma separated)" />
-      </div>
-      <textarea id="aNotes" rows="5" placeholder="Notes / abstract for NLP clustering"></textarea>
-      <button id="autoFillArticleBtn">Auto Fill Fields</button>
-      <button id="addArticleBtn">Add Article</button>
-      <div id="addArticleMsg" class="hint"></div>
     </section>
 
-    <section id="analysisTab" class="panel card">
-      <h2>Structured Paper Breakdown</h2>
-      <div class="row wrap">
-        <select id="analysisArticleSelect"></select>
-      </div>
-      <div class="row wrap two-col">
-        <textarea id="fProblem" placeholder="problem statement"></textarea>
-        <textarea id="fSetting" placeholder="setting/domain"></textarea>
-        <textarea id="fDataset" placeholder="dataset/environment"></textarea>
-        <textarea id="fModel" placeholder="model/algorithm"></textarea>
-        <textarea id="fBaselines" placeholder="baseline methods"></textarea>
-        <textarea id="fMetrics" placeholder="evaluation metrics"></textarea>
-        <textarea id="fFindings" placeholder="key findings"></textarea>
-        <textarea id="fLimitations" placeholder="limitations"></textarea>
-        <textarea id="fAssumptions" placeholder="assumptions"></textarea>
-        <textarea id="fFuture" placeholder="future work"></textarea>
-        <textarea id="fCommentary" placeholder="your commentary"></textarea>
-        <textarea id="fFigures" placeholder="extracted figures"></textarea>
-        <textarea id="fEquations" placeholder="extracted equations"></textarea>
-        <textarea id="fTables" placeholder="extracted tables"></textarea>
-      </div>
-      <button id="saveAnalysisBtn">Save Analysis</button>
-
-      <h3>Article File (Full Document DB Fields)</h3>
-      <div class="row wrap two-col">
-        <input id="afName" placeholder="file name (e.g., manuscript.pdf)" />
-        <textarea id="afFullText" placeholder="full extracted text"></textarea>
-        <textarea id="afSections" placeholder="section segmentation"></textarea>
-        <textarea id="afReferences" placeholder="references extraction"></textarea>
-        <textarea id="afMetadata" placeholder="metadata extraction"></textarea>
-      </div>
-      <button id="saveArticleFileBtn">Save Article File</button>
-      <h3>Article Attachments</h3>
-      <div class="row wrap">
-        <input type="file" id="articleDocumentFile" />
-        <button id="uploadArticleDocumentBtn">Upload Attachment</button>
-      </div>
-      <ul id="articleDocumentList"></ul>
-    </section>
-
-    <section id="capturesTab" class="panel card">
-      <h2>Screenshots & Capture Provenance</h2>
-      <div class="row wrap">
-        <select id="captureArticleSelect"></select>
-        <input type="file" id="captureFile" accept="image/*" />
-        <input id="captureUrl" placeholder="source URL" />
-        <input id="captureTitle" placeholder="page title" />
-        <input id="captureTag" placeholder="tag/category" />
-        <select id="captureDocumentSelect"></select>
-      </div>
-      <textarea id="captureText" rows="3" placeholder="selected text / highlight"></textarea>
-      <textarea id="captureComment" rows="2" placeholder="manual comment"></textarea>
-      <button id="saveCaptureBtn">Save Capture</button>
-      <h3>Screenshot Gallery</h3>
-      <div id="captureGallery" class="grid"></div>
-      <div id="captureGrid" class="grid"></div>
-    </section>
 
     <section id="notesTab" class="panel card">
       <h2>Noter (Side-by-side Notes)</h2>
@@ -207,17 +208,6 @@
       </div>
     </section>
 
-    <section id="tableTab" class="panel card">
-      <h2>Comparison Matrix Builder</h2>
-      <p>Select article IDs separated by comma (example: 1,2,3)</p>
-      <input id="comparisonIds" placeholder="Article IDs" />
-      <button id="buildTableBtn">Build Comparison</button>
-      <pre id="comparisonPreview"></pre>
-      <h3>LaTeX table</h3>
-      <pre id="latexTableOut"></pre>
-      <h3>CSV</h3>
-      <pre id="csvOut"></pre>
-    </section>
 
     <section id="latexTab" class="panel card">
       <h2>LaTeX Workspace (Files, Editor, and PDF)</h2>

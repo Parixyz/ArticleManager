@@ -58,3 +58,11 @@ small { color:var(--muted); }
 }
 .presenter-viewer.fullscreen .presenter-preview-wrap { min-height: calc(100vh - 160px); }
 .presenter-files input[type="file"] { max-width: 100%; }
+
+.management-split { display:grid; grid-template-columns: 1.15fr 1fr; gap:12px; }
+.management-left, .management-right { border:1px solid #334155; border-radius:8px; padding:10px; background:#0b1220; }
+.article-table { width:100%; border-collapse:collapse; margin:8px 0 12px; font-size:13px; }
+.article-table th, .article-table td { border:1px solid #334155; padding:6px; text-align:left; }
+.article-table tbody tr { cursor:pointer; }
+.article-table tbody tr:hover { background:#1e293b; }
+#clearArticlesBtn, #deleteArticleBtn { background:#b91c1c; }

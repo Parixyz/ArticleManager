@@ -62,7 +62,11 @@ class LogicTests(unittest.TestCase):
         self.assertEqual({(r[0], r[1]) for r in rows}, {
             ('.bib', 'directory'),
             ('.bib/references.bib', 'file'),
+            ('Articles', 'directory'),
+            ('NLP', 'directory'),
+            ('Screenshots', 'directory'),
             ('SourceArticles', 'directory'),
+            ('Tables', 'directory'),
             ('main.tex', 'file'),
         })
 
