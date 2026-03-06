@@ -6,6 +6,10 @@ import json
 import os
 import re
 import sqlite3
+import shutil
+import subprocess
+import tempfile
+import base64
 from datetime import datetime, timezone
 from http import HTTPStatus
 from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
@@ -218,6 +222,20 @@ def init_db() -> None:
                 FOREIGN KEY(project_id) REFERENCES projects(id) ON DELETE CASCADE,
                 FOREIGN KEY(article_id) REFERENCES articles(id) ON DELETE SET NULL
             );
+
+            CREATE TABLE IF NOT EXISTS project_files (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                project_id INTEGER NOT NULL,
+                path TEXT NOT NULL,
+                file_type TEXT NOT NULL DEFAULT 'file',
+                content TEXT NOT NULL DEFAULT '',
+                linked_capture_id INTEGER,
+                created_at TEXT NOT NULL,
+                updated_at TEXT NOT NULL,
+                UNIQUE(project_id, path),
+                FOREIGN KEY(project_id) REFERENCES projects(id) ON DELETE CASCADE,
+                FOREIGN KEY(linked_capture_id) REFERENCES captures(id) ON DELETE SET NULL
+            );
             """
         )
 
@@ -276,6 +294,8 @@ class AppHandler(SimpleHTTPRequestHandler):
             return self._get_checklist(parsed.query)
         if p == "/api/comparison":
             return self._get_comparison(parsed.query)
+        if p == "/api/project-files":
+            return self._get_project_files(parsed.query)
         if p == "/api/export/articles.csv":
             return self._export_articles_csv(parsed.query)
         if p == "/api/export/project.bib":
@@ -305,6 +325,10 @@ class AppHandler(SimpleHTTPRequestHandler):
             return self._create_note()
         if p == "/api/checklist":
             return self._create_checklist_item()
+        if p == "/api/project-files":
+            return self._upsert_project_file()
+        if p == "/api/latex/render":
+            return self._render_latex_pdf()
         self._json_response({"error": "Not found"}, HTTPStatus.NOT_FOUND)
 
     def do_PUT(self):
@@ -737,6 +761,79 @@ class AppHandler(SimpleHTTPRequestHandler):
             writer.writerow(row)
 
         self._json_response({"rows": items, "latex": "\n".join(latex_lines), "csv": out.getvalue()})
+
+    def _get_project_files(self, query: str):
+        project = parse_qs(query).get("project", [""])[0]
+        if not project:
+            return self._json_response({"error": "project query is required"}, 400)
+        with db_conn() as conn:
+            try:
+                pid = get_project_id(conn, project)
+            except KeyError:
+                return self._json_response({"error": "project not found"}, 404)
+            rows = conn.execute(
+                """SELECT id,path,file_type,content,linked_capture_id,created_at,updated_at
+                FROM project_files WHERE project_id=? ORDER BY path""",
+                (pid,),
+            ).fetchall()
+        self._json_response([dict(r) for r in rows])
+
+    def _upsert_project_file(self):
+        p = self._parse_json()
+        project = p.get("project", "").strip()
+        rel_path = p.get("path", "").strip().lstrip("/")
+        if not project or not rel_path:
+            return self._json_response({"error": "project and path required"}, 400)
+        if ".." in Path(rel_path).parts:
+            return self._json_response({"error": "invalid path"}, 400)
+        file_type = p.get("file_type", "file").strip().lower()
+        if file_type not in {"file", "directory"}:
+            file_type = "file"
+        content = p.get("content", "")
+
+        with db_conn() as conn:
+            try:
+                pid = get_project_id(conn, project)
+            except KeyError:
+                return self._json_response({"error": "project not found"}, 404)
+            now = utc_now()
+            conn.execute(
+                """INSERT INTO project_files(project_id,path,file_type,content,linked_capture_id,created_at,updated_at)
+                VALUES(?,?,?,?,?,?,?)
+                ON CONFLICT(project_id,path)
+                DO UPDATE SET file_type=excluded.file_type,content=excluded.content,
+                linked_capture_id=excluded.linked_capture_id,updated_at=excluded.updated_at""",
+                (pid, rel_path, file_type, content if file_type == "file" else "", p.get("linked_capture_id"), now, now),
+            )
+        self._json_response({"status": "saved"}, 201)
+
+    def _render_latex_pdf(self):
+        p = self._parse_json()
+        latex = p.get("latex", "").strip()
+        if not latex:
+            return self._json_response({"error": "latex required"}, 400)
+        if shutil.which("pdflatex") is None:
+            return self._json_response({"error": "pdflatex is not available on this server"}, 503)
+
+        with tempfile.TemporaryDirectory() as tmp:
+            tex_path = Path(tmp) / "main.tex"
+            tex_path.write_text(latex, encoding="utf-8")
+            proc = subprocess.run(
+                ["pdflatex", "-interaction=nonstopmode", "-halt-on-error", "main.tex"],
+                cwd=tmp,
+                capture_output=True,
+                text=True,
+                timeout=25,
+            )
+            pdf_path = Path(tmp) / "main.pdf"
+            if proc.returncode != 0 or not pdf_path.exists():
+                return self._json_response({
+                    "error": "render failed",
+                    "log": f"{proc.stdout}\n{proc.stderr}"[-6000:],
+                }, 400)
+            encoded_pdf = base64.b64encode(pdf_path.read_bytes()).decode("ascii")
+
+        self._json_response({"pdf_data": f"data:application/pdf;base64,{encoded_pdf}"}, 200)
 
     def _export_articles_csv(self, query: str):
         project = parse_qs(query).get("project", [""])[0]
