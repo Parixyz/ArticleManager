@@ -40,6 +40,18 @@ python app.py
 
 Open: `http://localhost:5000`
 
+### LaTeX PDF rendering
+
+`/api/latex/render` uses `pdflatex` from `PATH` by default. If the server process cannot see `PATH` (common on Windows services/IDEs), set `PDFLATEX_PATH` to an absolute executable path before starting the app.
+
+Example (Windows):
+
+```powershell
+$env:PDFLATEX_PATH = "C:\Program Files\MiKTeX\miktex\bin\x64\pdflatex.exe"
+python app.py
+```
+
+
 ## API highlights
 
 - `POST /api/projects`
