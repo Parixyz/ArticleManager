@@ -40,10 +40,11 @@ def resolve_pdflatex_cmd() -> list[str] | None:
             return [str(configured_path)]
         return None
 
-    discovered = shutil.which("pdflatex")
-    if discovered is None:
-        return None
-    return [discovered]
+    for candidate in ("pdflatex", "lualatex", "xelatex", "tectonic"):
+        discovered = shutil.which(candidate)
+        if discovered:
+            return [discovered]
+    return None
 
 
 def sanitize_project_name(name: str) -> str:
@@ -927,7 +928,7 @@ class AppHandler(SimpleHTTPRequestHandler):
         if pdflatex_cmd is None:
             return self._json_response({
                 "error": "pdflatex is not available on this server",
-                "hint": "Set PDFLATEX_PATH to an absolute pdflatex executable path when PATH is unavailable to the server process.",
+                "hint": "Install pdflatex/lualatex/xelatex/tectonic, or set PDFLATEX_PATH to an absolute compiler executable path.",
             }, 503)
 
         with tempfile.TemporaryDirectory() as tmp:
