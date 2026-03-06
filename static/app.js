@@ -290,6 +290,10 @@ function extractDocumentBody(latex) {
   return latex.slice(startIdx, end.index).trim();
 }
 
+function hasBeamerFrameEnvironment(latex) {
+  return /\\begin\s*\{frame\}/i.test(latex);
+}
+
 function fileToDataUrl(file) {
   return new Promise((resolve, reject) => {
     const reader = new FileReader();
@@ -492,13 +496,19 @@ async function saveCurrentLatexFile() {
 }
 
 async function renderLatex() {
-  $('latexPreview').textContent = extractDocumentBody($('latexInput').value);
-  if (window.MathJax?.typesetPromise) {
+  const source = $('latexInput').value;
+  const preview = $('latexPreview');
+  preview.textContent = extractDocumentBody(source);
+
+  if (window.MathJax?.typesetPromise && !hasBeamerFrameEnvironment(source)) {
     await window.MathJax.typesetPromise([$('latexPreview')]);
+  } else if (hasBeamerFrameEnvironment(source)) {
+    $('latexRenderLog').textContent = 'Math preview skipped: Beamer frame environments are not supported by MathJax preview. PDF rendering still runs with pdflatex.';
   }
+
   const result = await api('/api/latex/render', {
     method: 'POST',
-    body: JSON.stringify({ latex: $('latexInput').value }),
+    body: JSON.stringify({ latex: source }),
   });
   $('latexPdfFrame').src = result.pdf_data || '';
   $('latexRenderLog').textContent = result.log || '';
