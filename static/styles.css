@@ -66,3 +66,7 @@ small { color:var(--muted); }
 .article-table tbody tr { cursor:pointer; }
 .article-table tbody tr:hover { background:#1e293b; }
 #clearArticlesBtn, #deleteArticleBtn { background:#b91c1c; }
+
+
+.secondary-btn { background:#334155; border:1px solid #475569; }
+.error-text { color:#fca5a5; }
