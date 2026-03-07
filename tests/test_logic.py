@@ -1,7 +1,7 @@
 import unittest
 from unittest.mock import patch
 
-from app import DEFAULT_MAIN_TEX, bib_warnings, choose_cluster, ensure_default_project_files, infer_article_fields, resolve_pdflatex_cmd, sanitize_project_name, top_keywords, validate_database_file
+from app import DEFAULT_MAIN_TEX, bib_warnings, choose_cluster, ensure_default_project_files, ensure_workspace_layout, infer_article_fields, resolve_pdflatex_cmd, sanitize_project_name, top_keywords, validate_database_file
 
 
 class LogicTests(unittest.TestCase):
@@ -63,6 +63,8 @@ class LogicTests(unittest.TestCase):
             ('.bib', 'directory'),
             ('.bib/references.bib', 'file'),
             ('Articles', 'directory'),
+            ('MiKTeXContentFinding', 'directory'),
+            ('MiKTeXContentFinding/content_finding.txt', 'file'),
             ('NLP', 'directory'),
             ('Screenshots', 'directory'),
             ('SourceArticles', 'directory'),
@@ -70,6 +72,21 @@ class LogicTests(unittest.TestCase):
             ('main.tex', 'file'),
         })
 
+
+
+    def test_ensure_workspace_layout_creates_expected_fs_dirs_and_files(self):
+        import tempfile
+        from pathlib import Path
+
+        with tempfile.TemporaryDirectory() as td:
+            workspace = Path(td) / 'DemoProject'
+            ensure_workspace_layout(workspace)
+            self.assertTrue((workspace / 'SourceArticles').is_dir())
+            self.assertTrue((workspace / '.bib').is_dir())
+            self.assertTrue((workspace / 'MiKTeXContentFinding').is_dir())
+            self.assertTrue((workspace / 'main.tex').is_file())
+            self.assertTrue((workspace / '.bib' / 'references.bib').is_file())
+            self.assertTrue((workspace / 'MiKTeXContentFinding' / 'content_finding.txt').is_file())
 
     def test_validate_database_file_accepts_sqlite_with_projects_table(self):
         import sqlite3

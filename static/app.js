@@ -73,6 +73,7 @@ function parseMethodTags(raw) {
 
 async function refreshProjects() {
   const projects = await api('/api/projects');
+  window._projects = projects;
   const select = $('projectSelect');
   select.innerHTML = '';
   for (const p of projects) {
@@ -93,13 +94,31 @@ async function createProject() {
       description: $('projectDescription').value,
       taxonomy: $('projectTaxonomy').value,
       writing_outline: $('projectOutline').value,
+      project_root: $('projectRoot').value,
     }),
   });
   $('projectName').value = '';
   $('projectDescription').value = '';
   $('projectTaxonomy').value = '';
   $('projectOutline').value = '';
+  $('projectRoot').value = '';
   await refreshProjects();
+}
+
+function selectedProjectMeta() {
+  const name = currentProject();
+  return (window._projects || []).find((p) => p.name === name) || null;
+}
+
+async function openProjectLocation() {
+  const project = currentProject();
+  if (!project) throw new Error('select a project first');
+  const out = await api('/api/projects/open-location', {
+    method: 'POST',
+    body: JSON.stringify({ project }),
+  });
+  const path = out.workspace_path || selectedProjectMeta()?.workspace_path || '';
+  alert(path ? `Opened: ${path}` : 'Project location opened');
 }
 
 function articleOptionValue(a) {
@@ -859,6 +878,7 @@ function on(id, event, handler) {
 }
 
 on('createProjectBtn', 'click', () => createProject().then(saveDatabaseSnapshot).catch((e) => alert(e.message)));
+on('openProjectLocationBtn', 'click', () => openProjectLocation().catch((e) => alert(e.message)));
 on('refreshBtn', 'click', () => refreshProjects().catch((e) => alert(e.message)));
 on('saveDbBtn', 'click', () => saveDatabaseSnapshot().catch((e) => alert(e.message)));
 on('loadDbBtn', 'click', () => loadDatabaseSnapshot().catch((e) => alert(e.message)));
