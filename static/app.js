@@ -142,6 +142,22 @@ async function openProjectLocation() {
   alert(path ? `Opened: ${path}` : 'Project location opened');
 }
 
+function selectedProjectMeta() {
+  const name = currentProject();
+  return (window._projects || []).find((p) => p.name === name) || null;
+}
+
+async function openProjectLocation() {
+  const project = currentProject();
+  if (!project) throw new Error('select a project first');
+  const out = await api('/api/projects/open-location', {
+    method: 'POST',
+    body: JSON.stringify({ project }),
+  });
+  const path = out.workspace_path || selectedProjectMeta()?.workspace_path || '';
+  alert(path ? `Opened: ${path}` : 'Project location opened');
+}
+
 function articleOptionValue(a) {
   return `${a.id} — ${a.title}`;
 }
