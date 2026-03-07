@@ -22,7 +22,9 @@
       <input id="projectDescription" placeholder="Description" />
       <input id="projectTaxonomy" placeholder="Project taxonomy (comma separated)" />
       <input id="projectOutline" placeholder="Writing outline (Section2->papers...)" />
+      <input id="projectRoot" placeholder="Project root location (optional path)" />
       <button id="createProjectBtn">Create Project</button>
+      <button id="openProjectLocationBtn" class="secondary-btn">Open Project Location</button>
       <select id="projectSelect"></select>
       <button id="refreshBtn">Refresh</button>
       <button id="saveDbBtn">Save DB</button>
@@ -51,7 +53,9 @@
           <div class="row wrap">
             <input type="file" id="presenterBulkFiles" multiple accept=".pdf,.txt,.md,.tex,.bib" />
             <button id="presenterBulkAddBtn">Add Files to SourceArticles</button>
+            <button id="presenterOpenSourceBtn" class="secondary-btn">Open SourceArticles Location</button>
           </div>
+          <div id="presenterBulkAddMsg" class="hint"></div>
           <ul id="presenterFileTree"></ul>
         </aside>
         <section class="presenter-viewer" id="presenterViewerPane">

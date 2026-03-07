@@ -10,6 +10,7 @@ import shutil
 import subprocess
 import tempfile
 import base64
+import sys
 from datetime import datetime, timezone
 from http import HTTPStatus
 from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
@@ -19,6 +20,7 @@ from urllib.parse import parse_qs, urlparse, unquote
 ROOT = Path(__file__).resolve().parent
 DB_PATH = ROOT / "article_manager.db"
 STATIC_ROOT = ROOT
+DEFAULT_WORKSPACE_ROOT = ROOT / "ProjectWorkspaces"
 
 ROLE_VALUES = {
     "background", "related work", "benchmark", "method", "dataset", "survey", "theory", "application"
@@ -173,6 +175,57 @@ Add your introduction here.
 """
 
 
+def normalize_workspace_root(raw: str) -> Path:
+    candidate = Path((raw or '').strip()).expanduser()
+    if not str(candidate):
+        candidate = DEFAULT_WORKSPACE_ROOT
+    if not candidate.is_absolute():
+        candidate = (ROOT / candidate).resolve()
+    return candidate
+
+
+def build_workspace_path(project_name: str, project_root: str) -> Path:
+    return normalize_workspace_root(project_root) / sanitize_project_name(project_name)
+
+
+def ensure_workspace_layout(workspace: Path) -> None:
+    (workspace / 'SourceArticles').mkdir(parents=True, exist_ok=True)
+    (workspace / 'Articles').mkdir(parents=True, exist_ok=True)
+    (workspace / 'Screenshots').mkdir(parents=True, exist_ok=True)
+    (workspace / 'Tables').mkdir(parents=True, exist_ok=True)
+    (workspace / 'NLP').mkdir(parents=True, exist_ok=True)
+    (workspace / '.bib').mkdir(parents=True, exist_ok=True)
+    (workspace / 'MiKTeXContentFinding').mkdir(parents=True, exist_ok=True)
+    main_tex = workspace / 'main.tex'
+    if not main_tex.exists():
+        main_tex.write_text(DEFAULT_MAIN_TEX, encoding='utf-8')
+    refs = workspace / '.bib' / 'references.bib'
+    if not refs.exists():
+        refs.write_text('', encoding='utf-8')
+    content_txt = workspace / 'MiKTeXContentFinding' / 'content_finding.txt'
+    if not content_txt.exists():
+        content_txt.write_text('Place MiKTeX content-finding files here.\n', encoding='utf-8')
+
+
+def open_path_in_file_explorer(target: Path) -> tuple[bool, str]:
+    if not target.exists():
+        return False, 'path does not exist'
+    try:
+        if os.name == 'nt':
+            os.startfile(str(target))  # type: ignore[attr-defined]
+            return True, 'opened'
+        if sys.platform == 'darwin':
+            subprocess.Popen(['open', str(target)])
+            return True, 'opened'
+        opener = shutil.which('xdg-open')
+        if opener:
+            subprocess.Popen([opener, str(target)])
+            return True, 'opened'
+        return False, 'no supported file explorer opener found (expected xdg-open/open/startfile)'
+    except Exception as exc:
+        return False, str(exc)
+
+
 def ensure_default_project_files(conn: sqlite3.Connection, project_id: int) -> None:
     now = utc_now()
     defaults = [
@@ -181,7 +234,9 @@ def ensure_default_project_files(conn: sqlite3.Connection, project_id: int) -> N
         ("Screenshots", "directory", ""),
         ("Tables", "directory", ""),
         ("NLP", "directory", ""),
+        ("MiKTeXContentFinding", "directory", ""),
         (".bib", "directory", ""),
+        ("MiKTeXContentFinding/content_finding.txt", "file", "Place MiKTeX content-finding files here.\n"),
         ("main.tex", "file", DEFAULT_MAIN_TEX),
         (".bib/references.bib", "file", ""),
     ]
@@ -239,6 +294,8 @@ def init_db() -> None:
                 description TEXT NOT NULL DEFAULT '',
                 taxonomy TEXT NOT NULL DEFAULT '',
                 writing_outline TEXT NOT NULL DEFAULT '',
+                project_root TEXT NOT NULL DEFAULT '',
+                workspace_path TEXT NOT NULL DEFAULT '',
                 created_at TEXT NOT NULL
             );
 
@@ -398,6 +455,12 @@ def ensure_schema_migrations() -> None:
         if "document_id" not in captures_cols:
             conn.execute("ALTER TABLE captures ADD COLUMN document_id INTEGER")
 
+        project_cols = {r[1] for r in conn.execute("PRAGMA table_info(projects)").fetchall()}
+        if "project_root" not in project_cols:
+            conn.execute("ALTER TABLE projects ADD COLUMN project_root TEXT NOT NULL DEFAULT ''")
+        if "workspace_path" not in project_cols:
+            conn.execute("ALTER TABLE projects ADD COLUMN workspace_path TEXT NOT NULL DEFAULT ''")
+
 
 def db_conn() -> sqlite3.Connection:
     conn = sqlite3.connect(DB_PATH)
@@ -526,6 +589,8 @@ class AppHandler(SimpleHTTPRequestHandler):
             return self._create_checklist_item()
         if p == "/api/project-files":
             return self._upsert_project_file()
+        if p == "/api/projects/open-location":
+            return self._open_project_location()
         if p == "/api/latex/render":
             return self._render_latex_pdf()
         if p == "/api/database/import":
@@ -540,7 +605,7 @@ class AppHandler(SimpleHTTPRequestHandler):
 
     def _get_projects(self):
         with db_conn() as conn:
-            rows = conn.execute("SELECT id,name,description,taxonomy,writing_outline,created_at FROM projects ORDER BY name").fetchall()
+            rows = conn.execute("SELECT id,name,description,taxonomy,writing_outline,project_root,workspace_path,created_at FROM projects ORDER BY name").fetchall()
         self._json_response([dict(r) for r in rows])
 
     def _create_project(self):
@@ -552,16 +617,37 @@ class AppHandler(SimpleHTTPRequestHandler):
         description = payload.get("description", "").strip()
         taxonomy = payload.get("taxonomy", "").strip()
         outline = payload.get("writing_outline", "").strip()
+        project_root = str(normalize_workspace_root(payload.get("project_root", "")))
+        workspace_path = str(build_workspace_path(name, project_root))
+        ensure_workspace_layout(Path(workspace_path))
         with db_conn() as conn:
             try:
                 cur = conn.execute(
-                    "INSERT INTO projects(name,description,taxonomy,writing_outline,created_at) VALUES (?,?,?,?,?)",
-                    (name, description, taxonomy, outline, utc_now()),
+                    "INSERT INTO projects(name,description,taxonomy,writing_outline,project_root,workspace_path,created_at) VALUES (?,?,?,?,?,?,?)",
+                    (name, description, taxonomy, outline, project_root, workspace_path, utc_now()),
                 )
                 ensure_default_project_files(conn, int(cur.lastrowid))
             except sqlite3.IntegrityError:
                 return self._json_response({"error": "project already exists"}, 409)
-        self._json_response({"name": name}, 201)
+        self._json_response({"name": name, "workspace_path": workspace_path}, 201)
+
+
+    def _open_project_location(self):
+        payload = self._parse_json()
+        project = payload.get('project', '').strip()
+        if not project:
+            return self._json_response({'error': 'project is required'}, 400)
+        with db_conn() as conn:
+            row = conn.execute('SELECT workspace_path FROM projects WHERE name=?', (project,)).fetchone()
+        if not row:
+            return self._json_response({'error': 'project not found'}, 404)
+        workspace_path = (row['workspace_path'] or '').strip()
+        if not workspace_path:
+            return self._json_response({'error': 'project workspace path is not set'}, 400)
+        ok, msg = open_path_in_file_explorer(Path(workspace_path))
+        if not ok:
+            return self._json_response({'error': f'failed to open project location: {msg}', 'workspace_path': workspace_path}, 500)
+        return self._json_response({'status': 'opened', 'workspace_path': workspace_path}, 200)
 
     def _get_dashboard(self, query: str):
         project = parse_qs(query).get("project", [""])[0]

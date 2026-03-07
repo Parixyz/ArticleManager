@@ -73,6 +73,7 @@ function parseMethodTags(raw) {
 
 async function refreshProjects() {
   const projects = await api('/api/projects');
+  window._projects = projects;
   const select = $('projectSelect');
   select.innerHTML = '';
   for (const p of projects) {
@@ -93,13 +94,31 @@ async function createProject() {
       description: $('projectDescription').value,
       taxonomy: $('projectTaxonomy').value,
       writing_outline: $('projectOutline').value,
+      project_root: $('projectRoot').value,
     }),
   });
   $('projectName').value = '';
   $('projectDescription').value = '';
   $('projectTaxonomy').value = '';
   $('projectOutline').value = '';
+  $('projectRoot').value = '';
   await refreshProjects();
+}
+
+function selectedProjectMeta() {
+  const name = currentProject();
+  return (window._projects || []).find((p) => p.name === name) || null;
+}
+
+async function openProjectLocation() {
+  const project = currentProject();
+  if (!project) throw new Error('select a project first');
+  const out = await api('/api/projects/open-location', {
+    method: 'POST',
+    body: JSON.stringify({ project }),
+  });
+  const path = out.workspace_path || selectedProjectMeta()?.workspace_path || '';
+  alert(path ? `Opened: ${path}` : 'Project location opened');
 }
 
 function articleOptionValue(a) {
@@ -524,6 +543,13 @@ let presenterScale = 1;
 let presenterSelected = { path: '', articleId: null };
 let presenterFilesCache = [];
 
+function setPresenterBulkMessage(msg, isError = false) {
+  const el = $('presenterBulkAddMsg');
+  if (!el) return;
+  el.textContent = msg || '';
+  el.classList.toggle('error-text', Boolean(isError));
+}
+
 function detectTextFromDataUrl(dataUrl) {
   const comma = dataUrl.indexOf(',');
   const head = comma >= 0 ? dataUrl.slice(0, comma) : '';
@@ -625,19 +651,55 @@ async function loadPresenterFiles() {
 async function addPresenterFilesToSourceArticles() {
   const files = Array.from($('presenterBulkFiles').files || []);
   if (!files.length) throw new Error('select files first');
+
   const added = [];
+  const failed = [];
+  setPresenterBulkMessage('');
+
   for (const file of files) {
-    const file_data = await fileToDataUrl(file);
-    await api('/api/articles/from-file', {
-      method: 'POST',
-      body: JSON.stringify({ project: currentProject(), file_name: file.name, file_data }),
-    });
-    added.push(file.name);
+    try {
+      const file_data = await fileToDataUrl(file);
+      await api('/api/articles/from-file', {
+        method: 'POST',
+        body: JSON.stringify({ project: currentProject(), file_name: file.name, file_data }),
+      });
+      added.push(file.name);
+    } catch (e) {
+      failed.push({ file: file.name, error: e.message || 'failed to add file' });
+    }
   }
+
   $('presenterBulkFiles').value = '';
-  $('presenterCurrentPath').textContent = `Added ${added.length} files to SourceArticles`;
+
+  if (added.length) {
+    $('presenterCurrentPath').textContent = `Added ${added.length} file(s) to SourceArticles`;
+  }
+
+  if (failed.length) {
+    const first = failed[0];
+    const suffix = failed.length > 1 ? ` (+${failed.length - 1} more)` : '';
+    setPresenterBulkMessage(`Added ${added.length}/${files.length}. Failed: ${first.file} — ${first.error}${suffix}`, true);
+  } else {
+    setPresenterBulkMessage(`Successfully added ${added.length} file(s) to SourceArticles.`);
+  }
+
   await loadAll();
 }
+
+async function openPresenterSourceLocation() {
+  const sourceDir = presenterFilesCache.find((f) => f.path === 'SourceArticles' && f.file_type === 'directory');
+  if (!sourceDir) {
+    throw new Error('SourceArticles folder is missing in this project');
+  }
+  presenterSelected.path = sourceDir.path;
+  presenterSelected.articleId = null;
+  $('presenterCurrentPath').textContent = `${sourceDir.path}/`;
+  $('presenterTextPreview').classList.remove('hidden');
+  $('presenterTextPreview').textContent = 'SourceArticles location opened. Select a file below this folder from the file list to preview it.';
+  $('presenterPdfFrame').classList.add('hidden');
+  await loadPresenterNotes();
+}
+
 
 async function togglePresenterFullView() {
   const pane = $('presenterViewerPane');
@@ -816,6 +878,7 @@ function on(id, event, handler) {
 }
 
 on('createProjectBtn', 'click', () => createProject().then(saveDatabaseSnapshot).catch((e) => alert(e.message)));
+on('openProjectLocationBtn', 'click', () => openProjectLocation().catch((e) => alert(e.message)));
 on('refreshBtn', 'click', () => refreshProjects().catch((e) => alert(e.message)));
 on('saveDbBtn', 'click', () => saveDatabaseSnapshot().catch((e) => alert(e.message)));
 on('loadDbBtn', 'click', () => loadDatabaseSnapshot().catch((e) => alert(e.message)));
@@ -843,7 +906,8 @@ on('zoomOutBtn', 'click', () => { presenterScale = Math.max(0.4, presenterScale 
 on('zoomResetBtn', 'click', () => { presenterScale = 1; applyPresenterZoom(); });
 on('savePresenterNoteBtn', 'click', () => savePresenterNote().catch((e) => alert(e.message)));
 on('addArticleByFileBtn', 'click', () => addArticleByFile().catch((e) => alert(e.message)));
-on('presenterBulkAddBtn', 'click', () => addPresenterFilesToSourceArticles().catch((e) => alert(e.message)));
+on('presenterBulkAddBtn', 'click', () => addPresenterFilesToSourceArticles().catch((e) => { setPresenterBulkMessage(e.message, true); alert(e.message); }));
+on('presenterOpenSourceBtn', 'click', () => openPresenterSourceLocation().catch((e) => { setPresenterBulkMessage(e.message, true); alert(e.message); }));
 on('presenterFileSearch', 'input', () => renderPresenterFileTree());
 on('presenterFullViewBtn', 'click', () => togglePresenterFullView());
 on('zoomFitBtn', 'click', () => fitPresenterWidth());
