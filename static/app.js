@@ -59,6 +59,7 @@ async function loadDatabaseSnapshot() {
   const db_data = await fileToDataUrl(file);
   await api('/api/database/import', { method: 'POST', body: JSON.stringify({ db_data }) });
   await refreshProjects();
+  updateProjectLocationInfo();
 }
 
 function syncExportLinks() {
@@ -72,8 +73,11 @@ function parseMethodTags(raw) {
 }
 
 async function refreshProjects() {
-  const projects = await api('/api/projects');
+  const payload = await api('/api/projects');
+  const projects = Array.isArray(payload) ? payload : (payload.projects || []);
   window._projects = projects;
+  window._defaultProjectRoot = Array.isArray(payload) ? '' : (payload.default_project_root || '');
+
   const select = $('projectSelect');
   select.innerHTML = '';
   for (const p of projects) {
@@ -83,6 +87,7 @@ async function refreshProjects() {
     select.appendChild(o);
   }
   if (projects.length) await loadAll();
+  updateProjectLocationInfo();
   syncExportLinks();
 }
 
@@ -103,6 +108,38 @@ async function createProject() {
   $('projectOutline').value = '';
   $('projectRoot').value = '';
   await refreshProjects();
+  updateProjectLocationInfo();
+}
+
+function selectedProjectMeta() {
+  const name = currentProject();
+  return (window._projects || []).find((p) => p.name === name) || null;
+}
+
+function updateProjectLocationInfo() {
+  const info = $('projectLocationInfo');
+  if (!info) return;
+  const m = selectedProjectMeta();
+  if (!m) {
+    const d = window._defaultProjectRoot || '(not set)';
+    info.textContent = `Default root: ${d}`;
+    return;
+  }
+  const root = m.project_root || window._defaultProjectRoot || '(not set)';
+  const workspace = m.workspace_path || '(not set)';
+  info.textContent = `Root: ${root} | Project location: ${workspace}`;
+}
+
+async function openProjectLocation() {
+  const project = currentProject();
+  if (!project) throw new Error('select a project first');
+  const out = await api('/api/projects/open-location', {
+    method: 'POST',
+    body: JSON.stringify({ project }),
+  });
+  const path = out.workspace_path || selectedProjectMeta()?.workspace_path || '';
+  updateProjectLocationInfo();
+  alert(path ? `Opened: ${path}` : 'Project location opened');
 }
 
 function selectedProjectMeta() {
@@ -882,7 +919,7 @@ on('openProjectLocationBtn', 'click', () => openProjectLocation().catch((e) => a
 on('refreshBtn', 'click', () => refreshProjects().catch((e) => alert(e.message)));
 on('saveDbBtn', 'click', () => saveDatabaseSnapshot().catch((e) => alert(e.message)));
 on('loadDbBtn', 'click', () => loadDatabaseSnapshot().catch((e) => alert(e.message)));
-on('projectSelect', 'change', () => loadAll().catch((e) => alert(e.message)));
+on('projectSelect', 'change', () => { updateProjectLocationInfo(); loadAll().catch((e) => alert(e.message)); });
 on('applyFilterBtn', 'click', () => loadArticles().catch((e) => alert(e.message)));
 on('clearArticlesBtn', 'click', () => clearProjectArticles().catch((e) => alert(e.message)));
 on('autoFillArticleBtn', 'click', () => autoFillArticle().catch((e) => alert(e.message)));

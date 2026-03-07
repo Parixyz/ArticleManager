@@ -606,7 +606,10 @@ class AppHandler(SimpleHTTPRequestHandler):
     def _get_projects(self):
         with db_conn() as conn:
             rows = conn.execute("SELECT id,name,description,taxonomy,writing_outline,project_root,workspace_path,created_at FROM projects ORDER BY name").fetchall()
-        self._json_response([dict(r) for r in rows])
+        self._json_response({
+            "default_project_root": str(DEFAULT_WORKSPACE_ROOT.resolve()),
+            "projects": [dict(r) for r in rows],
+        })
 
     def _create_project(self):
         payload = self._parse_json()
